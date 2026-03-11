@@ -41,10 +41,15 @@ function Modal({ title, onClose, children }) {
     );
 }
 
-function ImageUploader({ label, multiple, onUploaded }) {
+function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
     const [uploading, setUploading] = useState(false);
-    const [urls, setUrls] = useState([]);
+    const [urls, setUrls] = useState(initialUrls);
     const inputRef = useRef();
+
+    // Sync if initialUrls changes (e.g. switching between edit targets)
+    useEffect(() => {
+        setUrls(initialUrls);
+    }, [JSON.stringify(initialUrls)]);
 
     const handleFiles = async (files) => {
         if (!files.length) return;
@@ -91,7 +96,7 @@ function ImageUploader({ label, multiple, onUploaded }) {
                     <>
                         <Upload size={24} className="text-[#6e6e73]" />
                         <p className="text-sm text-[#6e6e73]">
-                            Click or drag &amp; drop to upload
+                            {urls.length > 0 ? "Click to add more images" : "Click or drag & drop to upload"}
                         </p>
                     </>
                 )}
@@ -369,6 +374,7 @@ export default function ProductsPage() {
                             <ImageUploader
                                 label="Product Images"
                                 multiple
+                                initialUrls={form.images || []}
                                 onUploaded={(urls) => setForm({ ...form, images: urls })}
                             />
 
@@ -405,6 +411,7 @@ export default function ProductsPage() {
                                         <ImageUploader
                                             label="Variant Images"
                                             multiple
+                                            initialUrls={v.images || []}
                                             onUploaded={(urls) => updateVariant(i, "images", urls)}
                                         />
                                     </div>
@@ -426,3 +433,5 @@ export default function ProductsPage() {
         </>
     );
 }
+
+
