@@ -260,7 +260,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
                 <input
                     ref={inputRef}
                     type="file"
-                    accept="*"
+                    accept="*/*"
                     multiple
                     className="hidden"
                     onChange={(e) => handleFiles(e.target.files)}
