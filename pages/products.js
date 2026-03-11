@@ -8,6 +8,7 @@ import {
     deleteProduct,
     uploadImage,
     uploadMultipleImages,
+    upload3DModel,
 } from "@/lib/api";
 import {
     Plus,
@@ -19,19 +20,60 @@ import {
     ChevronLeft,
     ChevronRight,
     Image as ImageIcon,
+    Box,
+    FileText,
+    CheckCircle2,
 } from "lucide-react";
 import Head from "next/head";
 
+// ─── 3-D format registry ──────────────────────────────────────────────────────
+const MODEL_FORMATS = [
+    { ext: "glb",  label: "GLB",   mime: ".glb"  },
+    { ext: "gltf", label: "GLTF",  mime: ".gltf" },
+    { ext: "obj",  label: "OBJ",   mime: ".obj"  },
+    { ext: "fbx",  label: "FBX",   mime: ".fbx"  },
+    { ext: "stl",  label: "STL",   mime: ".stl"  },
+    { ext: "dae",  label: "DAE",   mime: ".dae"  },
+    { ext: "3ds",  label: "3DS",   mime: ".3ds"  },
+    { ext: "usdz", label: "USDZ",  mime: ".usdz" },
+    { ext: "abc",  label: "ABC",   mime: ".abc"  },
+    { ext: "ply",  label: "PLY",   mime: ".ply"  },
+    { ext: "x3d",  label: "X3D",   mime: ".x3d"  },
+    { ext: "wrl",  label: "WRL",   mime: ".wrl"  },
+];
+const ACCEPT_3D = MODEL_FORMATS.map((f) => f.mime).join(",");
+
+function getExt(url = "") {
+    const name = url.split("?")[0].split("/").pop() || "";
+    return name.split(".").pop().toLowerCase();
+}
+
+function ModelBadge({ ext }) {
+    const colors = {
+        glb:  "bg-violet-100 text-violet-700",
+        gltf: "bg-violet-100 text-violet-700",
+        obj:  "bg-sky-100    text-sky-700",
+        fbx:  "bg-amber-100  text-amber-700",
+        stl:  "bg-green-100  text-green-700",
+        dae:  "bg-rose-100   text-rose-700",
+        usdz: "bg-pink-100   text-pink-700",
+    };
+    const cls = colors[ext] || "bg-gray-100 text-gray-600";
+    return (
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${cls}`}>
+            <Box size={10} /> {ext}
+        </span>
+    );
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 sticky top-0 bg-white z-10 rounded-t-2xl">
                     <h2 className="font-bold text-[#1d1d1f]">{title}</h2>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded-xl hover:bg-black/5 transition-colors"
-                    >
+                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
                         <X size={18} />
                     </button>
                 </div>
@@ -41,15 +83,13 @@ function Modal({ title, onClose, children }) {
     );
 }
 
+// ─── Image Uploader ───────────────────────────────────────────────────────────
 function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
     const [uploading, setUploading] = useState(false);
     const [urls, setUrls] = useState(initialUrls);
     const inputRef = useRef();
 
-    // Sync if initialUrls changes (e.g. switching between edit targets)
-    useEffect(() => {
-        setUrls(initialUrls);
-    }, [JSON.stringify(initialUrls)]);
+    useEffect(() => { setUrls(initialUrls); }, [JSON.stringify(initialUrls)]);
 
     const handleFiles = async (files) => {
         if (!files.length) return;
@@ -78,10 +118,7 @@ function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
             <div
                 onClick={() => inputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                    e.preventDefault();
-                    handleFiles(e.dataTransfer.files);
-                }}
+                onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
                 className="border-2 border-dashed border-black/10 rounded-xl p-6 cursor-pointer hover:border-black/30 transition-colors flex flex-col items-center gap-2 bg-[#f5f5f7]"
             >
                 {uploading ? (
@@ -90,7 +127,7 @@ function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
                         </svg>
-                        Uploading...
+                        Uploading…
                     </div>
                 ) : (
                     <>
@@ -100,34 +137,137 @@ function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
                         </p>
                     </>
                 )}
-                <input
-                    ref={inputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple={multiple}
-                    className="hidden"
-                    onChange={(e) => handleFiles(e.target.files)}
-                />
+                <input ref={inputRef} type="file" accept="image/*" multiple={multiple} className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)} />
             </div>
             {urls.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                     {urls.map((url, i) => (
                         <div key={i} className="relative group">
-                            <img
-                                src={url}
-                                alt={`upload-${i}`}
-                                className="w-16 h-16 object-cover rounded-xl border border-black/10"
-                            />
-                            <button
-                                type="button"
+                            <img src={url} alt={`upload-${i}`} className="w-16 h-16 object-cover rounded-xl border border-black/10" />
+                            <button type="button"
                                 onClick={() => {
                                     const next = urls.filter((_, j) => j !== i);
                                     setUrls(next);
                                     onUploaded(multiple ? next : "");
                                 }}
                                 className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                                <X size={10} />
+                            ><X size={10} /></button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── 3-D Model Uploader ───────────────────────────────────────────────────────
+function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }) {
+    const [uploading, setUploading] = useState(false);
+    const [progress, setProgress] = useState("");
+    const [models, setModels] = useState(initialModels); // [{url, name, ext}]
+    const inputRef = useRef();
+
+    useEffect(() => { setModels(initialModels); }, [JSON.stringify(initialModels)]);
+
+    const handleFiles = async (fileList) => {
+        const files = Array.from(fileList);
+        if (!files.length) return;
+        setUploading(true);
+        const uploaded = [...models];
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const f = files[i];
+                setProgress(`Uploading ${i + 1}/${files.length}: ${f.name}`);
+                const data = await upload3DModel(f);
+                const url = data.url || data.secure_url || data.fileUrl || "";
+                const ext = getExt(url) || getExt(f.name);
+                uploaded.push({ url, name: f.name, ext });
+            }
+            setModels(uploaded);
+            onUploaded(uploaded);
+        } catch (e) {
+            alert("3D Model upload failed: " + e.message);
+        } finally {
+            setUploading(false);
+            setProgress("");
+        }
+    };
+
+    const removeModel = (i) => {
+        const next = models.filter((_, j) => j !== i);
+        setModels(next);
+        onUploaded(next);
+    };
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-[#1d1d1f]">{label}</label>
+                <div className="flex flex-wrap gap-1">
+                    {MODEL_FORMATS.map((f) => (
+                        <span key={f.ext} className="text-[9px] font-semibold uppercase bg-[#f0f0f5] text-[#6e6e73] px-1.5 py-0.5 rounded-md tracking-wide">
+                            {f.label}
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            <div
+                onClick={() => !uploading && inputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+                className={`border-2 border-dashed rounded-xl p-6 transition-colors flex flex-col items-center gap-2
+                    ${uploading ? "border-violet-300 bg-violet-50 cursor-wait" : "border-violet-200 bg-violet-50/50 cursor-pointer hover:border-violet-400"}`}
+            >
+                {uploading ? (
+                    <div className="flex flex-col items-center gap-2 text-violet-600 text-sm">
+                        <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+                        </svg>
+                        <span className="text-xs">{progress || "Uploading…"}</span>
+                    </div>
+                ) : (
+                    <>
+                        <Box size={28} className="text-violet-400" />
+                        <p className="text-sm text-violet-600 font-medium">
+                            {models.length > 0 ? "Click to add more 3D models" : "Click or drag & drop 3D models"}
+                        </p>
+                        <p className="text-xs text-[#6e6e73]">
+                            Supports GLB, GLTF, OBJ, FBX, STL, DAE, USDZ, 3DS, ABC, PLY, X3D, WRL
+                        </p>
+                    </>
+                )}
+                <input
+                    ref={inputRef}
+                    type="file"
+                    accept={ACCEPT_3D}
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleFiles(e.target.files)}
+                />
+            </div>
+
+            {models.length > 0 && (
+                <div className="space-y-1.5 mt-1">
+                    {models.map((m, i) => (
+                        <div key={i} className="flex items-center gap-3 bg-[#f5f5f7] rounded-xl px-3 py-2 group">
+                            <Box size={16} className="text-violet-500 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-[#1d1d1f] truncate">{m.name || m.url.split("/").pop()}</p>
+                                {m.url && (
+                                    <a href={m.url} target="_blank" rel="noreferrer"
+                                        className="text-[10px] text-violet-500 underline underline-offset-2 hover:text-violet-700 truncate block">
+                                        View file ↗
+                                    </a>
+                                )}
+                            </div>
+                            <ModelBadge ext={m.ext || getExt(m.url)} />
+                            <CheckCircle2 size={14} className="text-green-500 shrink-0" />
+                            <button type="button" onClick={() => removeModel(i)}
+                                className="ml-1 text-[#6e6e73] hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <X size={13} />
                             </button>
                         </div>
                     ))}
@@ -137,6 +277,7 @@ function ImageUploader({ label, multiple, onUploaded, initialUrls = [] }) {
     );
 }
 
+// ─── Shared input style ───────────────────────────────────────────────────────
 const INPUT =
     "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
 
@@ -150,9 +291,11 @@ const emptyProduct = {
     returnInfo: "",
     tags: "",
     images: [],
+    models3d: [],          // NEW — array of { url, name, ext }
     variants: [{ color: "", images: [], stock: 0 }],
 };
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -160,11 +303,10 @@ export default function ProductsPage() {
     const [search, setSearch] = useState("");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [modal, setModal] = useState(null); // null | 'create' | 'edit'
+    const [modal, setModal] = useState(null);
     const [editTarget, setEditTarget] = useState(null);
     const [form, setForm] = useState(emptyProduct);
     const [saving, setSaving] = useState(false);
-    const [deleteId, setDeleteId] = useState(null);
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -182,10 +324,7 @@ export default function ProductsPage() {
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
     useEffect(() => { fetchProducts(); }, [page, search]);
 
-    const openCreate = () => {
-        setForm(emptyProduct);
-        setModal("create");
-    };
+    const openCreate = () => { setForm(emptyProduct); setModal("create"); };
     const openEdit = (p) => {
         setEditTarget(p);
         setForm({
@@ -198,6 +337,7 @@ export default function ProductsPage() {
             returnInfo: p.returnInfo || "",
             tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
             images: p.images || [],
+            models3d: p.models3d || [],
             variants: p.variants || [{ color: "", images: [], stock: 0 }],
         });
         setModal("edit");
@@ -213,6 +353,8 @@ export default function ProductsPage() {
                 slashedPrice: Number(form.slashedPrice),
                 categoryId: Number(form.categoryId),
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
+                // Send only URLs for models to keep payload lean
+                models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
             };
             if (modal === "create") await createProduct(payload);
             else await updateProduct(editTarget.id, payload);
@@ -249,14 +391,12 @@ export default function ProductsPage() {
                             <input
                                 value={search}
                                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                                placeholder="Search products..."
+                                placeholder="Search products…"
                                 className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
                             />
                         </div>
-                        <button
-                            onClick={openCreate}
-                            className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors"
-                        >
+                        <button onClick={openCreate}
+                            className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors">
                             <Plus size={16} /> Add Product
                         </button>
                     </div>
@@ -274,38 +414,59 @@ export default function ProductsPage() {
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-black/5 bg-[#f5f5f7]/50">
-                                            {["IMAGE", "NAME", "PRICE", "CATEGORY", "ACTIONS"].map((h) => (
+                                            {["IMAGE", "NAME", "PRICE", "CATEGORY", "3D", "ACTIONS"].map((h) => (
                                                 <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-[#6e6e73]">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {products.map((p) => (
-                                            <tr key={p.id} className="border-b border-black/5 hover:bg-[#f5f5f7]/50 transition-colors">
-                                                <td className="px-5 py-3">
-                                                    {p.images?.[0] ? (
-                                                        <img src={p.images[0]} alt={p.name} className="w-10 h-10 object-cover rounded-xl" />
-                                                    ) : (
-                                                        <div className="w-10 h-10 rounded-xl bg-[#f5f5f7] flex items-center justify-center">
-                                                            <ImageIcon size={16} className="text-[#6e6e73]" />
+                                        {products.map((p) => {
+                                            // normalise models: server may return string[] or {url,ext}[]
+                                            const rawModels = p.models3d || [];
+                                            const modelCount = rawModels.length;
+                                            const firstExt = modelCount
+                                                ? (typeof rawModels[0] === "string" ? getExt(rawModels[0]) : rawModels[0].ext || getExt(rawModels[0].url))
+                                                : null;
+
+                                            return (
+                                                <tr key={p.id} className="border-b border-black/5 hover:bg-[#f5f5f7]/50 transition-colors">
+                                                    <td className="px-5 py-3">
+                                                        {p.images?.[0] ? (
+                                                            <img src={p.images[0]} alt={p.name} className="w-10 h-10 object-cover rounded-xl" />
+                                                        ) : (
+                                                            <div className="w-10 h-10 rounded-xl bg-[#f5f5f7] flex items-center justify-center">
+                                                                <ImageIcon size={16} className="text-[#6e6e73]" />
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-5 py-3 font-medium text-[#1d1d1f] max-w-[200px] truncate">{p.name}</td>
+                                                    <td className="px-5 py-3 font-semibold text-[#1d1d1f]">₹{p.price}</td>
+                                                    <td className="px-5 py-3 text-[#6e6e73]">{p.category?.name || "—"}</td>
+                                                    <td className="px-5 py-3">
+                                                        {modelCount > 0 ? (
+                                                            <div className="flex items-center gap-1.5">
+                                                                <ModelBadge ext={firstExt} />
+                                                                {modelCount > 1 && (
+                                                                    <span className="text-[10px] text-[#6e6e73] font-semibold">+{modelCount - 1}</span>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[#6e6e73] text-xs">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-5 py-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
+                                                                <Pencil size={15} />
+                                                            </button>
+                                                            <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors">
+                                                                <Trash2 size={15} />
+                                                            </button>
                                                         </div>
-                                                    )}
-                                                </td>
-                                                <td className="px-5 py-3 font-medium text-[#1d1d1f] max-w-[200px] truncate">{p.name}</td>
-                                                <td className="px-5 py-3 font-semibold text-[#1d1d1f]">₹{p.price}</td>
-                                                <td className="px-5 py-3 text-[#6e6e73]">{p.category?.name || "—"}</td>
-                                                <td className="px-5 py-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
-                                                            <Pencil size={15} />
-                                                        </button>
-                                                        <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors">
-                                                            <Trash2 size={15} />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -358,7 +519,7 @@ export default function ProductsPage() {
                                 </div>
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Description</label>
-                                    <textarea className={INPUT} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description..." />
+                                    <textarea className={INPUT} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description…" />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Shipping Info</label>
@@ -378,11 +539,21 @@ export default function ProductsPage() {
                                 onUploaded={(urls) => setForm({ ...form, images: urls })}
                             />
 
+                            {/* 3D Models ↓ */}
+                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30">
+                                <Model3DUploader
+                                    label="3D Models"
+                                    initialModels={form.models3d || []}
+                                    onUploaded={(models) => setForm({ ...form, models3d: models })}
+                                />
+                            </div>
+
                             {/* Variants */}
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-[#1d1d1f]">Variants</label>
-                                    <button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0 }] })}
+                                    <button type="button"
+                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0 }] })}
                                         className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#f5f5f7] hover:bg-black/10 transition-colors">
                                         + Add Variant
                                     </button>
@@ -419,11 +590,13 @@ export default function ProductsPage() {
                             </div>
 
                             <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setModal(null)} className="flex-1 py-2.5 rounded-xl border border-black/10 text-sm font-medium hover:bg-[#f5f5f7] transition-colors">
+                                <button type="button" onClick={() => setModal(null)}
+                                    className="flex-1 py-2.5 rounded-xl border border-black/10 text-sm font-medium hover:bg-[#f5f5f7] transition-colors">
                                     Cancel
                                 </button>
-                                <button type="submit" disabled={saving} className="flex-1 bg-[#1d1d1f] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors disabled:opacity-60">
-                                    {saving ? "Saving..." : modal === "create" ? "Create Product" : "Save Changes"}
+                                <button type="submit" disabled={saving}
+                                    className="flex-1 bg-[#1d1d1f] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors disabled:opacity-60">
+                                    {saving ? "Saving…" : modal === "create" ? "Create Product" : "Save Changes"}
                                 </button>
                             </div>
                         </form>
@@ -433,5 +606,3 @@ export default function ProductsPage() {
         </>
     );
 }
-
-
