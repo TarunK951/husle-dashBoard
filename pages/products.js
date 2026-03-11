@@ -41,7 +41,13 @@ const MODEL_FORMATS = [
     { ext: "x3d",  label: "X3D",   mime: ".x3d"  },
     { ext: "wrl",  label: "WRL",   mime: ".wrl"  },
 ];
-const ACCEPT_3D = MODEL_FORMATS.map((f) => f.mime).join(",");
+
+// Known 3-D extensions for validation after the user picks a file.
+// The file input itself uses accept="*" because Windows does not have
+// registered MIME types for most 3-D formats, causing the picker to
+// show nothing if extension-only values like ".glb" are used.
+const MODEL_EXTENSIONS = new Set(MODEL_FORMATS.map((f) => f.ext));
+
 
 function getExt(url = "") {
     const name = url.split("?")[0].split("/").pop() || "";
@@ -173,6 +179,18 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
     const handleFiles = async (fileList) => {
         const files = Array.from(fileList);
         if (!files.length) return;
+
+        // Warn if user picked a file that isn't a known 3-D format but still
+        // allow it — the backend will accept any binary.
+        const unknown = files.filter((f) => {
+            const ext = f.name.split(".").pop().toLowerCase();
+            return !MODEL_EXTENSIONS.has(ext);
+        });
+        if (unknown.length) {
+            const names = unknown.map((f) => f.name).join(", ");
+            if (!confirm(`"${names}" doesn't look like a 3D model. Upload anyway?`)) return;
+        }
+
         setUploading(true);
         const uploaded = [...models];
         try {
@@ -242,7 +260,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
                 <input
                     ref={inputRef}
                     type="file"
-                    accept={ACCEPT_3D}
+                    accept="*"
                     multiple
                     className="hidden"
                     onChange={(e) => handleFiles(e.target.files)}
