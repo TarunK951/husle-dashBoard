@@ -14,15 +14,39 @@ import {
     Menu,
     X,
     ChevronRight,
+    Home,
+    LayoutGrid,
+    Heading,
+    Zap,
+    Palette,
+    Video,
+    Quote,
+    BookOpen,
+    FileText,
 } from "lucide-react";
 
-const navItems = [
+const HOMEPAGE_ITEMS = [
+    { href: "/homepage/hero", icon: Home, label: "Hero" },
+    { href: "/homepage/essentials", icon: LayoutGrid, label: "The Essentials" },
+    { href: "/homepage/section-titles", icon: Heading, label: "Section titles" },
+    { href: "/homepage/offers", icon: Zap, label: "Offers" },
+    { href: "/homepage/design-inspiration", icon: Palette, label: "Design Inspiration" },
+    { href: "/homepage/real-stories", icon: Video, label: "Real stories" },
+    { href: "/homepage/testimonials", icon: Quote, label: "Testimonials" },
+    { href: "/homepage/journal", icon: BookOpen, label: "Journal" },
+    { href: "/faqs", icon: MessageCircle, label: "Common questions (FAQ)" },
+];
+
+const PAGES_ITEMS = [
+    { href: "/pages/about", icon: FileText, label: "About" },
+];
+
+const MAIN_NAV_ITEMS = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/products", icon: Package, label: "Products" },
     { href: "/categories", icon: Tag, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
     { href: "/banners", icon: Image, label: "Banners" },
-    { href: "/faqs", icon: MessageCircle, label: "FAQs" },
     { href: "/offers", icon: Ticket, label: "Offers" },
     { href: "/users", icon: Users, label: "Users" },
 ];
@@ -31,6 +55,7 @@ export default function Layout({ children }) {
     const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [user, setUser] = useState(null);
+    const [dateLabel, setDateLabel] = useState("");
 
     useEffect(() => {
         const token = localStorage.getItem("hustle_admin_token");
@@ -41,6 +66,17 @@ export default function Layout({ children }) {
         }
         if (userData) setUser(JSON.parse(userData));
     }, [router]);
+
+    useEffect(() => {
+        setDateLabel(
+            new Date().toLocaleDateString("en-IN", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+            })
+        );
+    }, []);
 
     const handleLogout = () => {
         localStorage.removeItem("hustle_admin_token");
@@ -65,7 +101,7 @@ export default function Layout({ children }) {
             >
                 {/* Logo */}
                 <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
-                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center flex-shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0">
                         <span className="text-[#1d1d1f] font-black text-sm">HL</span>
                     </div>
                     {sidebarOpen && (
@@ -78,18 +114,65 @@ export default function Layout({ children }) {
 
                 {/* Navigation */}
                 <nav className="flex-1 py-4 overflow-y-auto">
-                    {navItems.map(({ href, icon: Icon, label }) => {
+                    {sidebarOpen && (
+                        <p className="mx-3 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Homepage</p>
+                    )}
+                    {HOMEPAGE_ITEMS.map(({ href, icon: Icon, label }) => {
                         const active = router.pathname === href;
                         return (
                             <Link
                                 key={href}
                                 href={href}
-                                className={`flex items-center gap-3 mx-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 group ${active
+                                className={`flex items-center gap-3 mx-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${active
                                         ? "bg-white text-[#1d1d1f] font-semibold"
                                         : "text-white/70 hover:bg-white/10 hover:text-white"
                                     }`}
                             >
-                                <Icon size={18} className="flex-shrink-0" />
+                                <Icon size={18} className="shrink-0" />
+                                {sidebarOpen && <span className="text-sm truncate">{label}</span>}
+                                {active && sidebarOpen && (
+                                    <ChevronRight size={14} className="ml-auto opacity-50" />
+                                )}
+                            </Link>
+                        );
+                    })}
+                    {sidebarOpen && (
+                        <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Pages</p>
+                    )}
+                    {PAGES_ITEMS.map(({ href, icon: Icon, label }) => {
+                        const active = router.pathname === href;
+                        return (
+                            <Link
+                                key={href}
+                                href={href}
+                                className={`flex items-center gap-3 mx-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${active
+                                        ? "bg-white text-[#1d1d1f] font-semibold"
+                                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                                    }`}
+                            >
+                                <Icon size={18} className="shrink-0" />
+                                {sidebarOpen && <span className="text-sm truncate">{label}</span>}
+                                {active && sidebarOpen && (
+                                    <ChevronRight size={14} className="ml-auto opacity-50" />
+                                )}
+                            </Link>
+                        );
+                    })}
+                    {sidebarOpen && (
+                        <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Manage</p>
+                    )}
+                    {MAIN_NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+                        const active = router.pathname === href;
+                        return (
+                            <Link
+                                key={href}
+                                href={href}
+                                className={`flex items-center gap-3 mx-3 px-3 py-2.5 rounded-xl mb-1 transition-all duration-200 ${active
+                                        ? "bg-white text-[#1d1d1f] font-semibold"
+                                        : "text-white/70 hover:bg-white/10 hover:text-white"
+                                    }`}
+                            >
+                                <Icon size={18} className="shrink-0" />
                                 {sidebarOpen && <span className="text-sm truncate">{label}</span>}
                                 {active && sidebarOpen && (
                                     <ChevronRight size={14} className="ml-auto opacity-50" />
@@ -111,7 +194,7 @@ export default function Layout({ children }) {
                         onClick={handleLogout}
                         className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition-all duration-200 text-sm"
                     >
-                        <LogOut size={18} className="flex-shrink-0" />
+                        <LogOut size={18} className="shrink-0" />
                         {sidebarOpen && <span>Logout</span>}
                     </button>
                 </div>
@@ -129,15 +212,10 @@ export default function Layout({ children }) {
                     </button>
                     <div>
                         <h1 className="font-bold text-[#1d1d1f] text-base leading-tight">
-                            {navItems.find((n) => n.href === router.pathname)?.label || "Dashboard"}
+                            {[...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...MAIN_NAV_ITEMS].find((n) => n.href === router.pathname)?.label || "Dashboard"}
                         </h1>
                         <p className="text-xs text-[#6e6e73]">
-                            {new Date().toLocaleDateString("en-IN", {
-                                weekday: "long",
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                            })}
+                            {dateLabel}
                         </p>
                     </div>
                     <div className="ml-auto flex items-center gap-2">

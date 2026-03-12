@@ -363,13 +363,23 @@ export default function ProductsPage() {
 
     const handleSave = async (e) => {
         e.preventDefault();
+        const categoryIdNum = Number(form.categoryId);
+        const validCategoryIds = (categories || []).map((c) => Number(c.id)).filter((id) => id > 0);
+        if (!form.categoryId || categoryIdNum <= 0 || Number.isNaN(categoryIdNum)) {
+            alert("Please select a category. Products must be linked to an existing category.");
+            return;
+        }
+        if (!validCategoryIds.includes(categoryIdNum)) {
+            alert("Selected category is invalid or was removed. Please choose a category from the list.");
+            return;
+        }
         setSaving(true);
         try {
             const payload = {
                 ...form,
                 price: Number(form.price),
                 slashedPrice: Number(form.slashedPrice),
-                categoryId: Number(form.categoryId),
+                categoryId: categoryIdNum,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 // Send only URLs for models to keep payload lean
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
@@ -387,8 +397,12 @@ export default function ProductsPage() {
 
     const handleDelete = async (id) => {
         if (!confirm("Delete this product?")) return;
-        await deleteProduct(id);
-        fetchProducts();
+        try {
+            await deleteProduct(id);
+            fetchProducts();
+        } catch (e) {
+            alert(e.message || "Failed to delete product");
+        }
     };
 
     const updateVariant = (i, field, value) => {
