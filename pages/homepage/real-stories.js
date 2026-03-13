@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
-import { getUnboxing, updateUnboxing } from "@/lib/api";
-import { Plus, Trash2 } from "lucide-react";
+import { getUnboxing, updateUnboxing, uploadImage } from "@/lib/api";
+import { Plus, Trash2, Upload } from "lucide-react";
 import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
@@ -10,6 +10,8 @@ export default function RealStoriesPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [items, setItems] = useState([]);
+    const [uploadingIndex, setUploadingIndex] = useState(null);
+    const fileInputRef = useRef(null);
 
     const fetchData = async () => {
         setLoading(true);
@@ -25,6 +27,19 @@ export default function RealStoriesPage() {
     const addItem = () => setItems((i) => [...i, { type: "image", src: "", videoSrc: "", title: "", user: "", rating: 5 }]);
     const removeItem = (idx) => setItems((i) => i.filter((_, j) => j !== idx));
     const updateItem = (idx, field, value) => setItems((i) => i.map((x, j) => (j === idx ? { ...x, [field]: value } : x)));
+
+    const triggerUpload = (index) => { setUploadingIndex(index); fileInputRef.current?.click(); };
+    const handleFileChange = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || uploadingIndex == null) return;
+        e.target.value = "";
+        try {
+            const data = await uploadImage(file);
+            const url = data.url || data.secure_url || data.fileUrl || "";
+            updateItem(uploadingIndex, "src", url);
+        } catch (err) { alert(err.message || "Upload failed"); }
+        finally { setUploadingIndex(null); }
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -57,6 +72,7 @@ export default function RealStoriesPage() {
                             <label className="block text-sm font-medium text-[#1d1d1f]">Items</label>
                             <button type="button" onClick={addItem} className="flex items-center gap-1.5 text-sm font-medium text-[#1d1d1f] hover:underline"><Plus size={16} /> Add</button>
                         </div>
+                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                         <div className="space-y-3">
                             {items.map((it, i) => (
                                 <div key={i} className="p-4 rounded-xl border border-black/10 bg-white space-y-2">
@@ -64,7 +80,16 @@ export default function RealStoriesPage() {
                                         <option value="video">Video</option>
                                         <option value="image">Image</option>
                                     </select>
-                                    <input className={INPUT} placeholder="Source URL (image or video)" value={it.src} onChange={(e) => updateItem(i, "src", e.target.value)} />
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <input className={INPUT} placeholder="Source URL or upload image below" value={it.src} onChange={(e) => updateItem(i, "src", e.target.value)} />
+                                        <button type="button" onClick={() => triggerUpload(i)} disabled={uploadingIndex !== null} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm font-medium hover:bg-black/5 disabled:opacity-50 shrink-0">
+                                            {uploadingIndex === i ? <span className="inline-block w-4 h-4 border-2 border-[#1d1d1f] border-t-transparent rounded-full animate-spin" /> : <Upload size={16} />}
+                                            {uploadingIndex === i ? "Uploading…" : "Upload"}
+                                        </button>
+                                    </div>
+                                    {it.src && (it.type === "image" || !it.type) && (
+                                        <img src={it.src} alt="" className="w-20 h-20 object-cover rounded-lg border border-black/10" />
+                                    )}
                                     <input className={INPUT} placeholder="Video URL (optional, for popup when card is image)" value={it.videoSrc || ""} onChange={(e) => updateItem(i, "videoSrc", e.target.value)} />
                                     <input className={INPUT} placeholder="Title" value={it.title} onChange={(e) => updateItem(i, "title", e.target.value)} />
                                     <input className={INPUT} placeholder="User / handle" value={it.user} onChange={(e) => updateItem(i, "user", e.target.value)} />
