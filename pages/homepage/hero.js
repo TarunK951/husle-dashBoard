@@ -11,6 +11,10 @@ export default function HeroPage() {
     const [saving, setSaving] = useState(false);
     const [colors, setColors] = useState([]);
     const [sideText, setSideText] = useState(["", "", ""]);
+    const [ctaHeadline, setCtaHeadline] = useState("");
+    const [ctaSubtitle, setCtaSubtitle] = useState("");
+    const [ctaButtonText, setCtaButtonText] = useState("");
+    const [ctaButtonLink, setCtaButtonLink] = useState("");
     const [imageWidth, setImageWidth] = useState({ mobile: "", desktop: "" });
     const [uploadingIndex, setUploadingIndex] = useState(null);
     const fileInputRef = useRef(null);
@@ -19,8 +23,12 @@ export default function HeroPage() {
         setLoading(true);
         try {
             const d = await getHero();
-            setColors(d.colors || []);
+            setColors((d.colors || []).map((x) => ({ ...x, tooltip: x.tooltip ?? "" })));
             if (Array.isArray(d.sideText)) setSideText([d.sideText[0] ?? "", d.sideText[1] ?? "", d.sideText[2] ?? ""]);
+            setCtaHeadline(d.ctaHeadline ?? "");
+            setCtaSubtitle(d.ctaSubtitle ?? "");
+            setCtaButtonText(d.ctaButtonText ?? "");
+            setCtaButtonLink(d.ctaButtonLink ?? "");
             if (d.config?.imageWidth) setImageWidth({
                 mobile: d.config.imageWidth.mobile ?? "",
                 desktop: d.config.imageWidth.desktop ?? "",
@@ -34,7 +42,7 @@ export default function HeroPage() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const addColor = () => setColors((c) => [...c, { id: "", name: "", img: "", hex: "#000000" }]);
+    const addColor = () => setColors((c) => [...c, { id: "", name: "", img: "", hex: "#000000", tooltip: "" }]);
     const removeColor = (i) => setColors((c) => c.filter((_, j) => j !== i));
     const updateColor = (i, field, value) => setColors((c) => c.map((x, j) => (j === i ? { ...x, [field]: value } : x)));
 
@@ -62,8 +70,12 @@ export default function HeroPage() {
         setSaving(true);
         try {
             await updateHero({
-                colors: colors.map((x) => ({ id: x.id || undefined, name: x.name, img: x.img, hex: x.hex })),
+                colors: colors.map((x) => ({ id: x.id || undefined, name: x.name, img: x.img, hex: x.hex, tooltip: x.tooltip || undefined })),
                 sideText: sideText.filter(Boolean),
+                ctaHeadline: ctaHeadline || undefined,
+                ctaSubtitle: ctaSubtitle || undefined,
+                ctaButtonText: ctaButtonText || undefined,
+                ctaButtonLink: ctaButtonLink || undefined,
                 config: {
                     imageWidth: (imageWidth.mobile || imageWidth.desktop)
                         ? { mobile: imageWidth.mobile || undefined, desktop: imageWidth.desktop || undefined }
@@ -113,6 +125,7 @@ export default function HeroPage() {
                                     <div key={i} className="p-4 rounded-xl border border-black/10 bg-white space-y-3">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <input className={`${INPUT} flex-1 min-w-[120px]`} placeholder="Name (e.g. Midnight)" value={c.name} onChange={(e) => updateColor(i, "name", e.target.value)} />
+                                            <input className={`${INPUT} flex-1 min-w-[120px]`} placeholder="Tooltip (e.g. Midnight)" value={c.tooltip ?? ""} onChange={(e) => updateColor(i, "tooltip", e.target.value)} title="Shown on hover over the dot" />
                                             <button type="button" onClick={() => removeColor(i)} className="p-2 rounded-lg text-red-500 hover:bg-red-50 shrink-0"><Trash2 size={16} /></button>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
@@ -145,6 +158,27 @@ export default function HeroPage() {
                                 {[0, 1, 2].map((i) => (
                                     <input key={i} className={INPUT} placeholder={`Line ${i + 1} (e.g. HUSLE, LIFESTYLE)`} value={sideText[i] ?? ""} onChange={(e) => setSideText((s) => { const n = [...s]; n[i] = e.target.value; return n; })} />
                                 ))}
+                            </div>
+                        </div>
+                        <div className="space-y-3 pt-4 border-t border-black/5">
+                            <h3 className="text-sm font-semibold text-[#1d1d1f]">CTA panel (scroll-reveal)</h3>
+                            <div>
+                                <label className="block text-sm text-[#6e6e73] mb-1">CTA headline</label>
+                                <input className={INPUT} placeholder="Pro Level Protection." value={ctaHeadline} onChange={(e) => setCtaHeadline(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="block text-sm text-[#6e6e73] mb-1">CTA subtitle</label>
+                                <input className={INPUT} placeholder="Aerospace grade materials engineered for the modern husle." value={ctaSubtitle} onChange={(e) => setCtaSubtitle(e.target.value)} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm text-[#6e6e73] mb-1">Button text</label>
+                                    <input className={INPUT} placeholder="Buy Now" value={ctaButtonText} onChange={(e) => setCtaButtonText(e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="block text-sm text-[#6e6e73] mb-1">Button link</label>
+                                    <input className={INPUT} placeholder="/products" value={ctaButtonLink} onChange={(e) => setCtaButtonLink(e.target.value)} />
+                                </div>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">

@@ -2,14 +2,8 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import {
-    LayoutDashboard,
     Package,
-    Tag,
-    ShoppingCart,
-    Image,
     MessageCircle,
-    Ticket,
-    Users,
     LogOut,
     Menu,
     X,
@@ -23,6 +17,10 @@ import {
     Quote,
     BookOpen,
     FileText,
+    HelpCircle,
+    PanelTop,
+    Search,
+    ShoppingCart,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
@@ -33,23 +31,23 @@ const HOMEPAGE_ITEMS = [
     { href: "/homepage/design-inspiration", icon: Palette, label: "Design Inspiration" },
     { href: "/homepage/real-stories", icon: Video, label: "Real stories" },
     { href: "/homepage/testimonials", icon: Quote, label: "Testimonials" },
-    { href: "/homepage/journal", icon: BookOpen, label: "Journal" },
+    { href: "/homepage/journal", icon: BookOpen, label: "Journal / Blog" },
     { href: "/faqs", icon: MessageCircle, label: "Common questions (FAQ)" },
 ];
 
 const PAGES_ITEMS = [
     { href: "/pages/about", icon: FileText, label: "About" },
+    { href: "/pages/support", icon: HelpCircle, label: "Support" },
 ];
 
-const MAIN_NAV_ITEMS = [
-    { href: "/", icon: LayoutDashboard, label: "Dashboard" },
+const SITEWIDE_ITEMS = [
+    { href: "/navigation", icon: PanelTop, label: "Navigation (Navbar)" },
+    { href: "/search-config", icon: Search, label: "Search config" },
     { href: "/products", icon: Package, label: "Products" },
-    { href: "/categories", icon: Tag, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
-    { href: "/banners", icon: Image, label: "Banners" },
-    { href: "/offers", icon: Ticket, label: "Offers" },
-    { href: "/users", icon: Users, label: "Users" },
 ];
+
+const ALL_NAV_ITEMS = [...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...SITEWIDE_ITEMS];
 
 export default function Layout({ children }) {
     const router = useRouter();
@@ -159,9 +157,9 @@ export default function Layout({ children }) {
                         );
                     })}
                     {sidebarOpen && (
-                        <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Manage</p>
+                        <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Site-wide</p>
                     )}
-                    {MAIN_NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+                    {SITEWIDE_ITEMS.map(({ href, icon: Icon, label }) => {
                         const active = router.pathname === href;
                         return (
                             <Link
@@ -212,7 +210,7 @@ export default function Layout({ children }) {
                     </button>
                     <div>
                         <h1 className="font-bold text-[#1d1d1f] text-base leading-tight">
-                            {[...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...MAIN_NAV_ITEMS].find((n) => n.href === router.pathname)?.label || "Dashboard"}
+                            {ALL_NAV_ITEMS.find((n) => n.href === router.pathname)?.label || "Hero"}
                         </h1>
                         <p className="text-xs text-[#6e6e73]">
                             {dateLabel}
