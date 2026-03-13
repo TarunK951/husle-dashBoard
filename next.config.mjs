@@ -2,19 +2,16 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
     return {
-      // beforeFiles runs before filesystem checks — leave empty
       beforeFiles: [],
-      // afterFiles runs after filesystem/API route checks
-      // Local API routes (pages/api/*) always win over afterFiles rewrites,
-      // so /api/upload/model will be handled locally, not proxied.
+      // /api/* → backend. Pages under pages/api/* (e.g. /api/upload/model) take precedence.
       afterFiles: [
         {
           source: '/api/:path*',
-          destination: 'https://server.huslelifestyle.com/api/:path*',
+          destination: `${apiBase.replace(/\/$/, '')}/:path*`,
         },
       ],
-      // fallback rewrites
       fallback: [],
     };
   },
