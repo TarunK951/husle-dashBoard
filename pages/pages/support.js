@@ -7,6 +7,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function SupportPageEditor() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
         heading: "",
@@ -19,6 +20,7 @@ export default function SupportPageEditor() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getSupportPage();
             setForm({
@@ -30,7 +32,7 @@ export default function SupportPageEditor() {
                 contactFormEnabled: d.contactFormEnabled !== false,
             });
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load support page");
         } finally {
             setLoading(false);
         }
@@ -76,6 +78,13 @@ export default function SupportPageEditor() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Support/contact page: email, phone, address, hours, and optional contact form.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="space-y-3">
                             <div>
@@ -107,6 +116,7 @@ export default function SupportPageEditor() {
                             {saving ? "Saving..." : "Save Support page"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

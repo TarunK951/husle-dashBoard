@@ -7,6 +7,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function SectionTitlesPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
         featuredTitle: "",
@@ -25,6 +26,7 @@ export default function SectionTitlesPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getHomepageContent();
             const di = d.designInspiration || {};
@@ -42,7 +44,7 @@ export default function SectionTitlesPage() {
                 faqLabel: d.faqLabel ?? "",
                 faqTitle: d.faqTitle ?? "",
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load section titles"); }
         finally { setLoading(false); }
     };
 
@@ -91,6 +93,13 @@ export default function SectionTitlesPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Labels and titles above homepage sections.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="space-y-4">
                             <h3 className="text-sm font-semibold text-[#1d1d1f]">Featured</h3>
@@ -123,6 +132,7 @@ export default function SectionTitlesPage() {
                             {saving ? "Saving..." : "Save section titles"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

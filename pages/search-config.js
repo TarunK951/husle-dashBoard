@@ -8,6 +8,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function SearchConfigPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [quickLinks, setQuickLinks] = useState([]);
     const [popular, setPopular] = useState([]);
@@ -17,6 +18,7 @@ export default function SearchConfigPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getSearchConfig();
             setQuickLinks(Array.isArray(d.quickLinks) ? d.quickLinks : []);
@@ -29,7 +31,7 @@ export default function SearchConfigPage() {
                 ctaText: d.featured?.ctaText ?? "Shop now",
             });
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load search config");
             setQuickLinks([]);
             setPopular([]);
         } finally {
@@ -97,7 +99,13 @@ export default function SearchConfigPage() {
             <Layout>
                 <div className="space-y-8 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Content shown when users click the search icon: Quick Links, Popular tags, and optional Featured product card.</p>
-
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-8">
                         <div>
                             <h3 className="text-sm font-semibold text-[#1d1d1f] mb-3">Quick Links</h3>
@@ -165,6 +173,7 @@ export default function SearchConfigPage() {
                             {saving ? "Saving..." : "Save Search config"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

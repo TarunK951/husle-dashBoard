@@ -10,6 +10,7 @@ const emptyPost = { title: "", excerpt: "", date: "", author: "", category: "", 
 
 export default function JournalPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [posts, setPosts] = useState([]);
     const [modal, setModal] = useState(null);
@@ -20,10 +21,11 @@ export default function JournalPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getBlogPosts();
             setPosts(Array.isArray(d) ? d : (d.data || d.posts || []));
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load journal"); }
         finally { setLoading(false); }
     };
 
@@ -86,7 +88,13 @@ export default function JournalPage() {
                             <Plus size={16} /> Add post
                         </button>
                     </div>
-                    {posts.length === 0 ? (
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (posts.length === 0 ? (
                         <div className="bg-white rounded-2xl p-16 text-center text-[#6e6e73] text-sm border border-black/5">No posts yet. Add your first one!</div>
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

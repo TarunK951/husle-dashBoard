@@ -8,18 +8,19 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function HeroPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [colors, setColors] = useState([]);
     const [ctaHeadline, setCtaHeadline] = useState("");
     const [ctaSubtitle, setCtaSubtitle] = useState("");
     const [ctaButtonText, setCtaButtonText] = useState("");
     const [ctaButtonLink, setCtaButtonLink] = useState("");
-    const [imageWidth, setImageWidth] = useState({ mobile: "", desktop: "" });
     const [uploadingIndex, setUploadingIndex] = useState(null);
     const fileInputRef = useRef(null);
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getHero();
             const raw = (d.colors || []).slice(0, 3);
@@ -28,12 +29,8 @@ export default function HeroPage() {
             setCtaSubtitle(d.ctaSubtitle ?? "");
             setCtaButtonText(d.ctaButtonText ?? "");
             setCtaButtonLink(d.ctaButtonLink ?? "");
-            if (d.config?.imageWidth) setImageWidth({
-                mobile: d.config.imageWidth.mobile ?? "",
-                desktop: d.config.imageWidth.desktop ?? "",
-            });
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load hero");
         } finally {
             setLoading(false);
         }
@@ -74,11 +71,6 @@ export default function HeroPage() {
                 ctaSubtitle: ctaSubtitle || undefined,
                 ctaButtonText: ctaButtonText || undefined,
                 ctaButtonLink: ctaButtonLink || undefined,
-                config: {
-                    imageWidth: (imageWidth.mobile || imageWidth.desktop)
-                        ? { mobile: imageWidth.mobile || undefined, desktop: imageWidth.desktop || undefined }
-                        : undefined,
-                },
             });
             alert("Hero saved.");
             fetchData();
@@ -103,6 +95,13 @@ export default function HeroPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Top of homepage: up to 3 color variants. Each variant has an image and a text/dot color.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div>
                             <div className="flex items-center justify-between mb-3">
@@ -171,20 +170,11 @@ export default function HeroPage() {
                                 </div>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Image width mobile (optional)</label>
-                                <input className={INPUT} placeholder="370px" value={imageWidth.mobile} onChange={(e) => setImageWidth((w) => ({ ...w, mobile: e.target.value }))} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Image width desktop (optional)</label>
-                                <input className={INPUT} placeholder="640px" value={imageWidth.desktop} onChange={(e) => setImageWidth((w) => ({ ...w, desktop: e.target.value }))} />
-                            </div>
-                        </div>
                         <button type="submit" disabled={saving} className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-60">
                             {saving ? "Saving..." : "Save Hero"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

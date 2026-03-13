@@ -8,6 +8,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function TestimonialsPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [items, setItems] = useState([]);
     const [uploadingIndex, setUploadingIndex] = useState(null);
@@ -15,10 +16,11 @@ export default function TestimonialsPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getTestimonials();
             setItems(d.items || []);
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load testimonials"); }
         finally { setLoading(false); }
     };
 
@@ -77,6 +79,13 @@ export default function TestimonialsPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">What People Say: quote cards with rating, name, avatar.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="flex items-center justify-between">
                             <label className="block text-sm font-medium text-[#1d1d1f]">Items</label>
@@ -107,6 +116,7 @@ export default function TestimonialsPage() {
                             {saving ? "Saving..." : "Save"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

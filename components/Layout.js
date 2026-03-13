@@ -20,12 +20,15 @@ import {
     PanelTop,
     Search,
     ShoppingCart,
+    FolderTree,
+    Sparkles,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
     { href: "/homepage/hero", icon: Home, label: "Hero" },
     { href: "/homepage/essentials", icon: LayoutGrid, label: "The Essentials" },
     { href: "/homepage/section-titles", icon: Heading, label: "Section titles" },
+    { href: "/homepage/design-inspiration", icon: Sparkles, label: "Design inspiration" },
     { href: "/homepage/offers", icon: Zap, label: "Offers" },
     { href: "/homepage/real-stories", icon: Video, label: "Real stories" },
     { href: "/homepage/testimonials", icon: Quote, label: "Testimonials" },
@@ -42,6 +45,7 @@ const SITEWIDE_ITEMS = [
     { href: "/navigation", icon: PanelTop, label: "Navigation (Navbar)" },
     { href: "/search-config", icon: Search, label: "Search config" },
     { href: "/products", icon: Package, label: "Products" },
+    { href: "/categories", icon: FolderTree, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
 ];
 

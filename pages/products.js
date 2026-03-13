@@ -77,11 +77,11 @@ function ModelBadge({ ext }) {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 sticky top-0 bg-white z-10 rounded-t-2xl">
                     <h2 className="font-bold text-[#1d1d1f]">{title}</h2>
-                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
+                    <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
                         <X size={18} />
                     </button>
                 </div>
@@ -324,6 +324,7 @@ const emptyProduct = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
+    const [productsError, setProductsError] = useState(null);
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
@@ -335,15 +336,25 @@ export default function ProductsPage() {
     const [form, setForm] = useState(emptyProduct);
     const [saving, setSaving] = useState(false);
     const [bundleProductList, setBundleProductList] = useState([]);
+    const [formError, setFormError] = useState(null);
 
     const fetchProducts = async () => {
         setLoading(true);
+        setProductsError(null);
         try {
-            const data = await getProducts({ page, limit: 10, search, categoryId: categoryId || undefined });
-            setProducts(data.products || data.data || []);
-            if (data.totalPages) setTotalPages(data.totalPages);
+            const limitNum = 10;
+            const data = await getProducts({ page, limit: limitNum, search, categoryId: categoryId || undefined });
+            // Backend may return { products }, { data: [] }, { items }, or array
+            const list = Array.isArray(data)
+                ? data
+                : (data.products || data.data || data.items || []);
+            setProducts(Array.isArray(list) ? list : []);
+            const total = data.total ?? data.totalCount ?? list.length;
+            setTotalPages(data.totalPages ?? (typeof total === "number" && limitNum > 0 ? Math.ceil(total / limitNum) : 1));
         } catch (e) {
             console.error(e);
+            setProductsError(e?.message || "Failed to load products");
+            setProducts([]);
         } finally {
             setLoading(false);
         }
@@ -354,10 +365,15 @@ export default function ProductsPage() {
 
     const openCreate = () => {
         setForm(emptyProduct);
+        setFormError(null);
         setModal("create");
-        getProducts({ limit: 200 }).then((data) => setBundleProductList(data.products || data.data || [])).catch(() => setBundleProductList([]));
+        getProducts({ limit: 200 }).then((data) => {
+            const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
+            setBundleProductList(Array.isArray(list) ? list : []);
+        }).catch(() => setBundleProductList([]));
     };
     const openEdit = (p) => {
+        setFormError(null);
         setEditTarget(p);
         setForm({
             name: p.name || "",
@@ -379,25 +395,36 @@ export default function ProductsPage() {
             bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
         });
         setModal("edit");
-        getProducts({ limit: 200 }).then((data) => setBundleProductList(data.products || data.data || [])).catch(() => setBundleProductList([]));
+        getProducts({ limit: 200 }).then((data) => {
+            const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
+            setBundleProductList(Array.isArray(list) ? list : []);
+        }).catch(() => setBundleProductList([]));
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
+        setFormError(null);
         const categoryIdNum = Number(form.categoryId);
         const validCategoryIds = (categories || []).map((c) => Number(c.id)).filter((id) => id > 0);
         if (!form.categoryId || categoryIdNum <= 0 || Number.isNaN(categoryIdNum)) {
-            alert("Please select a category. Products must be linked to an existing category.");
+            setFormError("Please select a category. Products must be linked to an existing category.");
             return;
         }
         if (!validCategoryIds.includes(categoryIdNum)) {
-            alert("Selected category is invalid or was removed. Please choose a category from the list.");
+            setFormError("Selected category is invalid or was removed. Please choose a category from the list.");
             return;
         }
         setSaving(true);
         try {
+            const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
+            const variantsNormalized = (form.variants || []).map((v) => ({
+                ...v,
+                images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
+            }));
             const payload = {
                 ...form,
+                images: imagesArray,
+                variants: variantsNormalized,
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
@@ -415,7 +442,7 @@ export default function ProductsPage() {
             setModal(null);
             fetchProducts();
         } catch (e) {
-            alert(e.message);
+            setFormError(e?.message || "Failed to save product.");
         } finally {
             setSaving(false);
         }
@@ -474,6 +501,12 @@ export default function ProductsPage() {
                         {loading ? (
                             <div className="p-6 space-y-3">
                                 {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+                            </div>
+                        ) : productsError ? (
+                            <div className="py-16 text-center">
+                                <p className="text-red-600 text-sm mb-2">{productsError}</p>
+                                <p className="text-[#6e6e73] text-xs mb-3">Check that the API is reachable at the configured base URL.</p>
+                                <button type="button" onClick={() => fetchProducts()} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Retry</button>
                             </div>
                         ) : products.length === 0 ? (
                             <div className="py-16 text-center text-[#6e6e73] text-sm">No products found</div>
@@ -561,6 +594,14 @@ export default function ProductsPage() {
                 {modal && (
                     <Modal title={modal === "create" ? "Add New Product" : "Edit Product"} onClose={() => setModal(null)}>
                         <form onSubmit={handleSave} className="space-y-4">
+                            {formError && (
+                                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-2">
+                                    <span>{formError}</span>
+                                    <button type="button" onClick={() => setFormError(null)} className="text-red-500 hover:text-red-700 p-1">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Product Name *</label>
@@ -575,11 +616,14 @@ export default function ProductsPage() {
                                     <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Category</label>
-                                    <select className={INPUT} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Category *</label>
+                                    <select className={INPUT} value={form.categoryId} onChange={(e) => { setForm({ ...form, categoryId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.categoryId}>
                                         <option value="">Select category</option>
                                         {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
+                                    {!categories.length && (
+                                        <p className="text-xs text-amber-600 mt-1">No categories loaded. Create a category first or refresh the page.</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Tags (comma-separated)</label>

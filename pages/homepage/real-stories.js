@@ -20,6 +20,7 @@ function normalizeItem(it) {
 
 export default function RealStoriesPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [items, setItems] = useState([]);
     const [savedItems, setSavedItems] = useState([]);
@@ -29,6 +30,7 @@ export default function RealStoriesPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getUnboxing();
             const list = (d.items || []).map(normalizeItem);
@@ -36,7 +38,7 @@ export default function RealStoriesPage() {
             setSavedItems(list);
             setEditingIndex(null);
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load real stories");
         } finally {
             setLoading(false);
         }
@@ -128,7 +130,14 @@ export default function RealStoriesPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Carousel of videos and images (real stories / unboxing). Saved items appear below; use Add to create new, Edit to change, then Save or Cancel.</p>
-
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
+                    <>
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-semibold text-[#1d1d1f]">Saved items</h2>
                         <button
@@ -211,6 +220,8 @@ export default function RealStoriesPage() {
                                 {saving ? "Saving…" : "Save"}
                             </button>
                         </div>
+                    )}
+                    </>
                     )}
                 </div>
             </Layout>

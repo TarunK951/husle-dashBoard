@@ -8,6 +8,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function AboutPageEditor() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
         eyebrow: "",
@@ -23,6 +24,7 @@ export default function AboutPageEditor() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getAboutPage();
             setForm({
@@ -33,7 +35,7 @@ export default function AboutPageEditor() {
                 paragraphs: Array.isArray(d.paragraphs) ? [...d.paragraphs, "", ""].slice(0, 3) : ["", "", ""],
                 contentImage: d.contentImage ?? "",
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load about page"); }
         finally { setLoading(false); }
     };
 
@@ -101,6 +103,13 @@ export default function AboutPageEditor() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">About page: hero (eyebrow, headline, image) and content block.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="space-y-3">
                             <h3 className="text-sm font-semibold text-[#1d1d1f]">Hero</h3>
@@ -144,6 +153,7 @@ export default function AboutPageEditor() {
                             {saving ? "Saving..." : "Save About page"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

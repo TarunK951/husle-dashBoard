@@ -8,17 +8,19 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function NavigationPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [items, setItems] = useState([]);
     const [expandedIndex, setExpandedIndex] = useState(null);
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getNavigation();
             setItems(Array.isArray(d.items) ? d.items : []);
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load navigation");
             setItems([]);
         } finally {
             setLoading(false);
@@ -67,6 +69,13 @@ export default function NavigationPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-3xl">
                     <p className="text-sm text-[#6e6e73]">Main nav links (Products, Bundle, Accessories, Support) and dropdowns. Order here = order in the navbar.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-4">
                         {items.map((item, i) => (
                             <div key={i} className="border border-black/10 rounded-xl p-4 bg-white space-y-3">
@@ -119,6 +128,7 @@ export default function NavigationPage() {
                             </button>
                         </div>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

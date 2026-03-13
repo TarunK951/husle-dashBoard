@@ -8,6 +8,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function EssentialsPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [sectionLabel, setSectionLabel] = useState("");
     const [sectionTitle, setSectionTitle] = useState("");
@@ -18,13 +19,14 @@ export default function EssentialsPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getEssentials();
             setSectionLabel(d.sectionLabel ?? "");
             setSectionTitle(d.sectionTitle ?? "");
             setSectionDescription(d.sectionDescription ?? "");
             setCategories(d.categories || []);
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load essentials"); }
         finally { setLoading(false); }
     };
 
@@ -78,6 +80,13 @@ export default function EssentialsPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Category gallery section: section copy and category cards.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="space-y-3">
                             <div><label className="block text-sm font-medium text-[#1d1d1f] mb-1">Section label</label><input className={INPUT} value={sectionLabel} onChange={(e) => setSectionLabel(e.target.value)} placeholder="Ecosystem" /></div>
@@ -113,6 +122,7 @@ export default function EssentialsPage() {
                             {saving ? "Saving..." : "Save"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

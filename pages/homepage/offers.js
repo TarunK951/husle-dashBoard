@@ -8,6 +8,7 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 export default function HomepageOffersPage() {
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
     const [flashSale, setFlashSale] = useState({
         badge: "", title: "", subtitle: "", discount: "", offerLabel: "", timerValue: "", buttonText: "", link: "", imageUrl: "",
@@ -18,6 +19,7 @@ export default function HomepageOffersPage() {
 
     const fetchData = async () => {
         setLoading(true);
+        setError(null);
         try {
             const d = await getHomepageOffers();
             setFlashSale({
@@ -32,7 +34,7 @@ export default function HomepageOffersPage() {
                 imageUrl: d.flashSale?.imageUrl ?? "",
             });
             setSecondaryOffers(d.secondaryOffers || []);
-        } catch (e) { console.error(e); }
+        } catch (e) { setError(e?.message || "Failed to load offers"); }
         finally { setLoading(false); }
     };
 
@@ -102,6 +104,13 @@ export default function HomepageOffersPage() {
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
                     <p className="text-sm text-[#6e6e73]">Flash sale block and secondary promo cards on the homepage.</p>
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+                    {!error && (
                     <form onSubmit={handleSave} className="space-y-6">
                         <div className="p-4 rounded-2xl border border-black/10 bg-white space-y-3">
                             <h3 className="font-semibold text-[#1d1d1f]">Flash sale (main card)</h3>
@@ -151,6 +160,7 @@ export default function HomepageOffersPage() {
                             {saving ? "Saving..." : "Save offers"}
                         </button>
                     </form>
+                    )}
                 </div>
             </Layout>
         </>

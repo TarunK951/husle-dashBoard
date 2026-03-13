@@ -23,6 +23,7 @@ function formatCurrency(amount) {
 export default function OrdersPage() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [statusFilter, setStatusFilter] = useState("");
@@ -32,12 +33,13 @@ export default function OrdersPage() {
 
     const fetchOrders = async () => {
         setLoading(true);
+        setError(null);
         try {
             const data = await getOrders({ page, limit: 10, status: statusFilter || undefined });
             setOrders(data.orders || data.data || []);
             if (data.totalPages) setTotalPages(data.totalPages);
         } catch (e) {
-            console.error(e);
+            setError(e?.message || "Failed to load orders");
         } finally {
             setLoading(false);
         }
@@ -90,6 +92,12 @@ export default function OrdersPage() {
             <Head><title>Orders — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-5 fade-in">
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetchOrders()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
                     <div className="flex flex-wrap gap-3 items-center justify-between">
                         <select
                             value={statusFilter}
