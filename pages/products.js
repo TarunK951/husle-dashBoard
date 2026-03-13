@@ -352,17 +352,12 @@ export default function ProductsPage() {
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
-    const openCreate = async () => {
+    const openCreate = () => {
         setForm(emptyProduct);
         setModal("create");
-        try {
-            const data = await getProducts({ limit: 200 });
-            setBundleProductList(data.products || data.data || []);
-        } catch (_) {
-            setBundleProductList([]);
-        }
+        getProducts({ limit: 200 }).then((data) => setBundleProductList(data.products || data.data || [])).catch(() => setBundleProductList([]));
     };
-    const openEdit = async (p) => {
+    const openEdit = (p) => {
         setEditTarget(p);
         setForm({
             name: p.name || "",
@@ -384,12 +379,7 @@ export default function ProductsPage() {
             bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
         });
         setModal("edit");
-        try {
-            const data = await getProducts({ limit: 200 });
-            setBundleProductList(data.products || data.data || []);
-        } catch (_) {
-            setBundleProductList([]);
-        }
+        getProducts({ limit: 200 }).then((data) => setBundleProductList(data.products || data.data || [])).catch(() => setBundleProductList([]));
     };
 
     const handleSave = async (e) => {
@@ -595,6 +585,65 @@ export default function ProductsPage() {
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Tags (comma-separated)</label>
                                     <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="iphone, case, magsafe" />
                                 </div>
+                            </div>
+
+                            {/* Product options: Featured, Limited, Offer, Bundle */}
+                            <div className="border border-black/10 rounded-xl p-4 bg-[#f5f5f7]/50 space-y-4">
+                                <h3 className="text-sm font-semibold text-[#1d1d1f] flex items-center gap-2">
+                                    <Tag size={16} /> Product options
+                                </h3>
+                                <div className="flex flex-wrap gap-6">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Featured</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Limited</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Offer</span>
+                                    </label>
+                                    {form.offer && (
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-sm text-[#6e6e73]">Discount (%)</label>
+                                            <input type="number" min="0" max="100" className={`${INPUT} w-24`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="20" />
+                                        </div>
+                                    )}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Bundle</span>
+                                    </label>
+                                </div>
+                                {form.isBundle && (
+                                    <div className="pt-2 border-t border-black/10">
+                                        <p className="text-xs text-[#6e6e73] mb-2">Select products to include in this bundle (2 or more):</p>
+                                        <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
+                                            {bundleProductList.filter((prod) => prod.id !== editTarget?.id).map((prod) => {
+                                                const id = prod.id;
+                                                const checked = (form.bundleProductIds || []).includes(id);
+                                                return (
+                                                    <label key={id} className="flex items-center gap-2 cursor-pointer hover:bg-white/60 rounded-lg px-2 py-1.5">
+                                                        <input type="checkbox" checked={checked} onChange={(e) => {
+                                                            const ids = form.bundleProductIds || [];
+                                                            setForm({ ...form, bundleProductIds: e.target.checked ? [...ids, id] : ids.filter((i) => i !== id) });
+                                                        }} className="rounded border-black/20" />
+                                                        <Package size={14} className="text-[#6e6e73] shrink-0" />
+                                                        <span className="text-sm text-[#1d1d1f] truncate">{prod.name}</span>
+                                                        <span className="text-xs text-[#6e6e73] shrink-0">₹{prod.price}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        {(!form.bundleProductIds || form.bundleProductIds.length === 0) && (
+                                            <p className="text-xs text-amber-600 mt-1">Select at least one product for the bundle.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Description</label>
                                     <textarea className={INPUT} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description…" />
