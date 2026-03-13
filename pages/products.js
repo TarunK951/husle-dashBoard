@@ -23,6 +23,8 @@ import {
     Box,
     FileText,
     CheckCircle2,
+    Tag,
+    Package,
 } from "lucide-react";
 import Head from "next/head";
 
@@ -309,8 +311,14 @@ const emptyProduct = {
     returnInfo: "",
     tags: "",
     images: [],
-    models3d: [],          // NEW — array of { url, name, ext }
+    models3d: [],
     variants: [{ color: "", images: [], stock: 0 }],
+    featured: false,
+    limited: false,
+    offer: false,
+    discount: "",
+    isBundle: false,
+    bundleProductIds: [],
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -326,6 +334,7 @@ export default function ProductsPage() {
     const [editTarget, setEditTarget] = useState(null);
     const [form, setForm] = useState(emptyProduct);
     const [saving, setSaving] = useState(false);
+    const [bundleProductList, setBundleProductList] = useState([]);
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -343,8 +352,17 @@ export default function ProductsPage() {
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
-    const openCreate = () => { setForm(emptyProduct); setModal("create"); };
-    const openEdit = (p) => {
+    const openCreate = async () => {
+        setForm(emptyProduct);
+        setModal("create");
+        try {
+            const data = await getProducts({ limit: 200 });
+            setBundleProductList(data.products || data.data || []);
+        } catch (_) {
+            setBundleProductList([]);
+        }
+    };
+    const openEdit = async (p) => {
         setEditTarget(p);
         setForm({
             name: p.name || "",
@@ -358,8 +376,20 @@ export default function ProductsPage() {
             images: p.images || [],
             models3d: p.models3d || [],
             variants: p.variants || [{ color: "", images: [], stock: 0 }],
+            featured: !!p.featured,
+            limited: !!p.limited,
+            offer: !!p.offer,
+            discount: p.discount != null ? String(p.discount) : "",
+            isBundle: !!p.isBundle,
+            bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
         });
         setModal("edit");
+        try {
+            const data = await getProducts({ limit: 200 });
+            setBundleProductList(data.products || data.data || []);
+        } catch (_) {
+            setBundleProductList([]);
+        }
     };
 
     const handleSave = async (e) => {
@@ -379,11 +409,16 @@ export default function ProductsPage() {
             const payload = {
                 ...form,
                 price: Number(form.price),
-                slashedPrice: Number(form.slashedPrice),
+                slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
-                // Send only URLs for models to keep payload lean
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
+                featured: !!form.featured,
+                limited: !!form.limited,
+                offer: !!form.offer,
+                discount: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
+                isBundle: !!form.isBundle,
+                bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
             };
             if (modal === "create") await createProduct(payload);
             else await updateProduct(editTarget.id, payload);
