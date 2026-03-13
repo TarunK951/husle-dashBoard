@@ -319,6 +319,7 @@ export default function ProductsPage() {
     const [categories, setCategories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [categoryId, setCategoryId] = useState("");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [modal, setModal] = useState(null);
@@ -329,7 +330,7 @@ export default function ProductsPage() {
     const fetchProducts = async () => {
         setLoading(true);
         try {
-            const data = await getProducts({ page, limit: 10, search });
+            const data = await getProducts({ page, limit: 10, search, categoryId: categoryId || undefined });
             setProducts(data.products || data.data || []);
             if (data.totalPages) setTotalPages(data.totalPages);
         } catch (e) {
@@ -340,7 +341,7 @@ export default function ProductsPage() {
     };
 
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
-    useEffect(() => { fetchProducts(); }, [page, search]);
+    useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
     const openCreate = () => { setForm(emptyProduct); setModal("create"); };
     const openEdit = (p) => {
@@ -418,14 +419,24 @@ export default function ProductsPage() {
                 <div className="space-y-5 fade-in">
                     {/* Header */}
                     <div className="flex flex-wrap gap-3 items-center justify-between">
-                        <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
-                            <input
-                                value={search}
-                                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                                placeholder="Search products…"
-                                className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
-                            />
+                        <div className="flex flex-wrap gap-2 items-center">
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
+                                <input
+                                    value={search}
+                                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                                    placeholder="Search products…"
+                                    className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
+                                />
+                            </div>
+                            <select
+                                value={categoryId}
+                                onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}
+                                className="px-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all"
+                            >
+                                <option value="">All categories</option>
+                                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
                         </div>
                         <button onClick={openCreate}
                             className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors">

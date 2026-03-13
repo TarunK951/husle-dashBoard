@@ -10,7 +10,6 @@ export default function HeroPage() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [colors, setColors] = useState([]);
-    const [sideText, setSideText] = useState(["", "", ""]);
     const [ctaHeadline, setCtaHeadline] = useState("");
     const [ctaSubtitle, setCtaSubtitle] = useState("");
     const [ctaButtonText, setCtaButtonText] = useState("");
@@ -23,8 +22,8 @@ export default function HeroPage() {
         setLoading(true);
         try {
             const d = await getHero();
-            setColors((d.colors || []).map((x) => ({ ...x, tooltip: x.tooltip ?? "" })));
-            if (Array.isArray(d.sideText)) setSideText([d.sideText[0] ?? "", d.sideText[1] ?? "", d.sideText[2] ?? ""]);
+            const raw = (d.colors || []).slice(0, 3);
+            setColors(raw.map((x) => ({ ...x, tooltip: x.tooltip ?? "" })));
             setCtaHeadline(d.ctaHeadline ?? "");
             setCtaSubtitle(d.ctaSubtitle ?? "");
             setCtaButtonText(d.ctaButtonText ?? "");
@@ -42,7 +41,7 @@ export default function HeroPage() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const addColor = () => setColors((c) => [...c, { id: "", name: "", img: "", hex: "#000000", tooltip: "" }]);
+    const addColor = () => setColors((c) => (c.length >= 3 ? c : [...c, { id: "", name: "", img: "", hex: "#000000", tooltip: "" }]));
     const removeColor = (i) => setColors((c) => c.filter((_, j) => j !== i));
     const updateColor = (i, field, value) => setColors((c) => c.map((x, j) => (j === i ? { ...x, [field]: value } : x)));
 
@@ -70,8 +69,7 @@ export default function HeroPage() {
         setSaving(true);
         try {
             await updateHero({
-                colors: colors.map((x) => ({ id: x.id || undefined, name: x.name, img: x.img, hex: x.hex, tooltip: x.tooltip || undefined })),
-                sideText: sideText.filter(Boolean),
+                colors: colors.slice(0, 3).map((x) => ({ id: x.id || undefined, name: x.name, img: x.img, hex: x.hex, tooltip: x.tooltip || undefined })),
                 ctaHeadline: ctaHeadline || undefined,
                 ctaSubtitle: ctaSubtitle || undefined,
                 ctaButtonText: ctaButtonText || undefined,
@@ -104,12 +102,12 @@ export default function HeroPage() {
             <Head><title>Hero — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
-                    <p className="text-sm text-[#6e6e73]">Top of homepage: product color variants and background text.</p>
+                    <p className="text-sm text-[#6e6e73]">Top of homepage: up to 3 color variants. Each variant has an image and a text/dot color.</p>
                     <form onSubmit={handleSave} className="space-y-6">
                         <div>
                             <div className="flex items-center justify-between mb-3">
-                                <label className="block text-sm font-medium text-[#1d1d1f]">Color variants</label>
-                                <button type="button" onClick={addColor} className="flex items-center gap-1.5 text-sm font-medium text-[#1d1d1f] hover:underline">
+                                <label className="block text-sm font-medium text-[#1d1d1f]">Color variants (max 3)</label>
+                                <button type="button" onClick={addColor} disabled={colors.length >= 3} className="flex items-center gap-1.5 text-sm font-medium text-[#1d1d1f] hover:underline disabled:opacity-50 disabled:pointer-events-none">
                                     <Plus size={16} /> Add
                                 </button>
                             </div>
@@ -123,15 +121,14 @@ export default function HeroPage() {
                             <div className="space-y-3">
                                 {colors.map((c, i) => (
                                     <div key={i} className="p-4 rounded-xl border border-black/10 bg-white space-y-3">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <input className={`${INPUT} flex-1 min-w-[120px]`} placeholder="Name (e.g. Midnight)" value={c.name} onChange={(e) => updateColor(i, "name", e.target.value)} />
-                                            <input className={`${INPUT} flex-1 min-w-[120px]`} placeholder="Tooltip (e.g. Midnight)" value={c.tooltip ?? ""} onChange={(e) => updateColor(i, "tooltip", e.target.value)} title="Shown on hover over the dot" />
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-xs font-medium text-[#6e6e73]">Variant {i + 1}</span>
                                             <button type="button" onClick={() => removeColor(i)} className="p-2 rounded-lg text-red-500 hover:bg-red-50 shrink-0"><Trash2 size={16} /></button>
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
                                             {c.img ? (
                                                 <div className="relative shrink-0">
-                                                    <img src={c.img} alt={c.name || "Variant"} className="w-16 h-16 object-cover rounded-xl border border-black/10" />
+                                                    <img src={c.img} alt="" className="w-16 h-16 object-cover rounded-xl border border-black/10" />
                                                     <button type="button" onClick={() => updateColor(i, "img", "")} className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"><X size={12} /></button>
                                                 </div>
                                             ) : null}
@@ -145,18 +142,11 @@ export default function HeroPage() {
                                             </button>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                            <label className="text-sm text-[#6e6e73] shrink-0">Text color:</label>
                                             <input type="color" className="w-10 h-10 rounded border border-black/10 cursor-pointer shrink-0" value={c.hex || "#000000"} onChange={(e) => updateColor(i, "hex", e.target.value)} />
                                             <input className={INPUT} placeholder="#2C2C2C" value={c.hex} onChange={(e) => updateColor(i, "hex", e.target.value)} />
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Background text lines (2–3 words each)</label>
-                            <div className="space-y-2">
-                                {[0, 1, 2].map((i) => (
-                                    <input key={i} className={INPUT} placeholder={`Line ${i + 1} (e.g. HUSLE, LIFESTYLE)`} value={sideText[i] ?? ""} onChange={(e) => setSideText((s) => { const n = [...s]; n[i] = e.target.value; return n; })} />
                                 ))}
                             </div>
                         </div>
