@@ -68,7 +68,7 @@ export default function RealStoriesPage() {
                                     <input className={INPUT} placeholder="Video URL (optional, for popup when card is image)" value={it.videoSrc || ""} onChange={(e) => updateItem(i, "videoSrc", e.target.value)} />
                                     <input className={INPUT} placeholder="Title" value={it.title} onChange={(e) => updateItem(i, "title", e.target.value)} />
                                     <input className={INPUT} placeholder="User / handle" value={it.user} onChange={(e) => updateItem(i, "user", e.target.value)} />
-                                    <input className={INPUT} type="number" min={0} max={5} step={0.5} placeholder="Rating 0–5" value={it.rating} onChange={(e) => updateItem(i, "rating", e.target.value)} />
+                                    <input className={INPUT} type="number" min={0} max={5} step={0.5} placeholder="Star rating shown on this story card (0–5, optional)" value={it.rating} onChange={(e) => updateItem(i, "rating", e.target.value)} />
                                     <button type="button" onClick={() => removeItem(i)} className="text-red-500 hover:underline text-sm flex items-center gap-1"><Trash2 size={14} /> Remove</button>
                                 </div>
                             ))}
