@@ -94,27 +94,31 @@ export default function JournalPage() {
                             <button type="button" onClick={() => fetchData()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
                         </div>
                     )}
-                    {!error && (posts.length === 0 ? (
-                        <div className="bg-white rounded-2xl p-16 text-center text-[#6e6e73] text-sm border border-black/5">No posts yet. Add your first one!</div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {posts.map((p) => (
-                                <div key={p.id} className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden flex">
-                                    {p.image && <img src={p.image} alt="" className="w-24 h-24 object-cover shrink-0" />}
-                                    <div className="p-4 flex-1 min-w-0 flex flex-col justify-between">
-                                        <div>
-                                            <p className="font-medium text-[#1d1d1f] text-sm truncate">{p.title || "—"}</p>
-                                            <p className="text-xs text-[#6e6e73] mt-0.5">{p.category} · {p.date}</p>
-                                            <p className="text-xs text-[#6e6e73] mt-1 line-clamp-2">{p.excerpt}</p>
+                    {!error && (
+                        <>
+                            {posts.length === 0 ? (
+                                <div className="bg-white rounded-2xl p-16 text-center text-[#6e6e73] text-sm border border-black/5">No posts yet. Add your first one!</div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {posts.map((p) => (
+                                        <div key={p.id} className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden flex">
+                                            {p.image && <img src={p.image} alt="" className="w-24 h-24 object-cover shrink-0" />}
+                                            <div className="p-4 flex-1 min-w-0 flex flex-col justify-between">
+                                                <div>
+                                                    <p className="font-medium text-[#1d1d1f] text-sm truncate">{p.title || "—"}</p>
+                                                    <p className="text-xs text-[#6e6e73] mt-0.5">{p.category} · {p.date}</p>
+                                                    <p className="text-xs text-[#6e6e73] mt-1 line-clamp-2">{p.excerpt}</p>
+                                                </div>
+                                                <div className="flex gap-2 mt-2">
+                                                    <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-[#f5f5f7] text-[#1d1d1f]"><Pencil size={14} /></button>
+                                                    <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex gap-2 mt-2">
-                                            <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-[#f5f5f7] text-[#1d1d1f]"><Pencil size={14} /></button>
-                                            <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500"><Trash2 size={14} /></button>
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            )}
+                        </>
                     )}
                 </div>
 

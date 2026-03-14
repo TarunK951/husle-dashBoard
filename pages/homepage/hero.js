@@ -25,10 +25,11 @@ export default function HeroPage() {
             const d = await getHero();
             const raw = (d.colors || []).slice(0, 3);
             setColors(raw.map((x) => ({ ...x, tooltip: x.tooltip ?? "" })));
-            setCtaHeadline(d.ctaHeadline ?? "");
-            setCtaSubtitle(d.ctaSubtitle ?? "");
-            setCtaButtonText(d.ctaButtonText ?? "");
-            setCtaButtonLink(d.ctaButtonLink ?? "");
+            const cta = d.cta && typeof d.cta === "object" ? d.cta : {};
+            setCtaHeadline(cta.headline ?? d.ctaHeadline ?? "");
+            setCtaSubtitle(cta.subtitle ?? d.ctaSubtitle ?? "");
+            setCtaButtonText(cta.buttonText ?? d.ctaButtonText ?? "");
+            setCtaButtonLink(cta.buttonLink ?? d.ctaButtonLink ?? "");
         } catch (e) {
             setError(e?.message || "Failed to load hero");
         } finally {
@@ -67,10 +68,12 @@ export default function HeroPage() {
         try {
             await updateHero({
                 colors: colors.slice(0, 3).map((x) => ({ id: x.id || undefined, name: x.name, img: x.img, hex: x.hex, tooltip: x.tooltip || undefined })),
-                ctaHeadline: ctaHeadline || undefined,
-                ctaSubtitle: ctaSubtitle || undefined,
-                ctaButtonText: ctaButtonText || undefined,
-                ctaButtonLink: ctaButtonLink || undefined,
+                cta: {
+                    headline: ctaHeadline || undefined,
+                    subtitle: ctaSubtitle || undefined,
+                    buttonText: ctaButtonText || undefined,
+                    buttonLink: ctaButtonLink || undefined,
+                },
             });
             alert("Hero saved.");
             fetchData();
