@@ -21,7 +21,6 @@ import {
     Search,
     ShoppingCart,
     FolderTree,
-    Tag,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
@@ -45,7 +44,6 @@ const SITEWIDE_ITEMS = [
     { href: "/search-config", icon: Search, label: "Search config" },
     { href: "/products", icon: Package, label: "Products" },
     { href: "/categories", icon: FolderTree, label: "Categories" },
-    { href: "/brands", icon: Tag, label: "Brands" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
 ];
 

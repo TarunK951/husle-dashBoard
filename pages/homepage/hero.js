@@ -24,7 +24,7 @@ export default function HeroPage() {
         try {
             const d = await getHero();
             const raw = (d.colors || []).slice(0, 3);
-            setColors(raw.map((x) => ({ ...x, tooltip: x.tooltip ?? "" })));
+            setColors(raw.map((x) => ({ ...x, name: x.name ?? "", tooltip: x.tooltip ?? "" })));
             const cta = d.cta && typeof d.cta === "object" ? d.cta : {};
             setCtaHeadline(cta.headline ?? d.ctaHeadline ?? "");
             setCtaSubtitle(cta.subtitle ?? d.ctaSubtitle ?? "");
@@ -126,6 +126,10 @@ export default function HeroPage() {
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="text-xs font-medium text-[#6e6e73]">Variant {i + 1}</span>
                                             <button type="button" onClick={() => removeColor(i)} className="p-2 rounded-lg text-red-500 hover:bg-red-50 shrink-0"><Trash2 size={16} /></button>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm text-[#6e6e73] mb-1">Name</label>
+                                            <input className={INPUT} placeholder="e.g. Midnight Black, Ocean Blue" value={c.name ?? ""} onChange={(e) => updateColor(i, "name", e.target.value)} />
                                         </div>
                                         <div className="flex flex-wrap items-center gap-2">
                                             {c.img ? (
