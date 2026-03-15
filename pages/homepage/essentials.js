@@ -52,13 +52,13 @@ export default function EssentialsPage() {
 
   const addItem = () =>
     setCategories((c) =>
-      c.length >= MAX_ITEMS ? c : [...c, { id: "", image: "", title: "" }]
+      c.length >= MAX_ITEMS ? c : [...c, { id: "", image: "", title: "" }],
     );
   const removeItem = (i) =>
     setCategories((c) => (c.length <= 1 ? c : c.filter((_, j) => j !== i)));
   const updateItem = (i, field, value) =>
     setCategories((c) =>
-      c.map((x, j) => (j === i ? { ...x, [field]: value } : x))
+      c.map((x, j) => (j === i ? { ...x, [field]: value } : x)),
     );
 
   const triggerUpload = (i) => {
@@ -72,7 +72,11 @@ export default function EssentialsPage() {
     e.target.value = "";
     try {
       const data = await uploadImage(file);
-      updateItem(idx, "image", data.url || data.secure_url || data.fileUrl || "");
+      updateItem(
+        idx,
+        "image",
+        data.url || data.secure_url || data.fileUrl || "",
+      );
     } catch (err) {
       alert(err?.message || "Upload failed");
     } finally {
@@ -128,7 +132,10 @@ export default function EssentialsPage() {
       <Layout>
         <div className="space-y-6 fade-in max-w-2xl">
           <p className="text-sm text-[#6e6e73]">
-            Gallery section: optional section label, title, description; up to {MAX_ITEMS} cards. Each card has <strong>image</strong> and <strong>title</strong> only. You can add only one more item (max {MAX_ITEMS}).
+            Gallery section: optional section label, title, description; up to{" "}
+            {MAX_ITEMS} cards. Each card has <strong>image</strong> and{" "}
+            <strong>title</strong> only. You can add only one more item (max{" "}
+            {MAX_ITEMS}).
           </p>
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
@@ -136,8 +143,7 @@ export default function EssentialsPage() {
               <button
                 type="button"
                 onClick={() => fetchData()}
-                className="text-sm font-medium text-red-700 hover:underline"
-              >
+                className="text-sm font-medium text-red-700 hover:underline">
                 Retry
               </button>
             </div>
@@ -195,8 +201,7 @@ export default function EssentialsPage() {
                     type="button"
                     onClick={addItem}
                     disabled={categories.length >= MAX_ITEMS}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm font-medium text-[#1d1d1f] hover:bg-black/5 disabled:opacity-50 disabled:pointer-events-none"
-                  >
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm font-medium text-[#1d1d1f] hover:bg-black/5 disabled:opacity-50 disabled:pointer-events-none">
                     <Plus size={16} /> Add card
                   </button>
                 </div>
@@ -211,8 +216,7 @@ export default function EssentialsPage() {
                   {categories.map((cat, i) => (
                     <div
                       key={i}
-                      className="p-4 rounded-xl border border-black/10 bg-[#fafafa] space-y-3"
-                    >
+                      className="p-4 rounded-xl border border-black/10 bg-[#fafafa] space-y-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-medium text-[#6e6e73]">
                           Card {i + 1}
@@ -222,8 +226,7 @@ export default function EssentialsPage() {
                             type="button"
                             onClick={() => removeItem(i)}
                             className="p-2 rounded-lg text-red-500 hover:bg-red-50 shrink-0"
-                            title="Remove card"
-                          >
+                            title="Remove card">
                             <Trash2 size={16} />
                           </button>
                         )}
@@ -236,7 +239,9 @@ export default function EssentialsPage() {
                           className={INPUT}
                           placeholder="e.g. iPhone Cases"
                           value={cat.title}
-                          onChange={(e) => updateItem(i, "title", e.target.value)}
+                          onChange={(e) =>
+                            updateItem(i, "title", e.target.value)
+                          }
                         />
                       </div>
                       <div className="flex flex-wrap items-end gap-2">
@@ -248,15 +253,16 @@ export default function EssentialsPage() {
                             className={INPUT}
                             placeholder="https://... or upload below"
                             value={cat.image}
-                            onChange={(e) => updateItem(i, "image", e.target.value)}
+                            onChange={(e) =>
+                              updateItem(i, "image", e.target.value)
+                            }
                           />
                         </div>
                         <button
                           type="button"
                           onClick={() => triggerUpload(i)}
                           disabled={uploadingIndex !== null}
-                          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] hover:bg-black/5 disabled:opacity-50 shrink-0"
-                        >
+                          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] hover:bg-black/5 disabled:opacity-50 shrink-0">
                           {uploadingIndex === i ? (
                             <span className="inline-block w-4 h-4 border-2 border-[#1d1d1f] border-t-transparent rounded-full animate-spin" />
                           ) : (
@@ -279,7 +285,8 @@ export default function EssentialsPage() {
                 </div>
                 {categories.length >= MAX_ITEMS && (
                   <p className="text-xs text-[#6e6e73]">
-                    Maximum {MAX_ITEMS} cards. Remove one to add a different card.
+                    Maximum {MAX_ITEMS} cards. Remove one to add a different
+                    card.
                   </p>
                 )}
               </div>
@@ -287,8 +294,7 @@ export default function EssentialsPage() {
               <button
                 type="submit"
                 disabled={saving || categories.length === 0}
-                className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+                className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed">
                 {saving ? "Saving…" : "Save Essentials"}
               </button>
             </form>

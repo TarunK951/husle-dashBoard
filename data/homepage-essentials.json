@@ -1,0 +1,15 @@
+{
+  "sectionLabel": "Ecosystem",
+  "sectionTitle": "The Essentials",
+  "sectionDescription": "A curated selection of premium protection, power, and acoustic accessories.",
+  "categories": [
+    { "id": 1, "image": "https://example.com/iphone-cases.jpg", "title": "iPhone Cases" },
+    { "id": 2, "image": "https://example.com/camera-lenses.jpg", "title": "Camera Lenses" },
+    { "id": 3, "image": "https://example.com/screen-protector.jpg", "title": "Screen Protector" },
+    { "id": 4, "image": "https://example.com/iphone-protection.jpg", "title": "iPhone Protection" },
+    { "id": 5, "image": "https://example.com/power-banks.jpg", "title": "Power Banks" },
+    { "id": 6, "image": "https://example.com/adaptors.jpg", "title": "Apple Adaptors" },
+    { "id": 7, "image": "https://example.com/airpods.jpg", "title": "AirPods" },
+    { "id": 8, "image": "https://example.com/bundle.jpg", "title": "Starter Bundle" }
+  ]
+}
