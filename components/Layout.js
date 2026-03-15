@@ -8,9 +8,7 @@ import {
     Menu,
     X,
     ChevronRight,
-    Home,
     LayoutGrid,
-    Heading,
     Zap,
     Video,
     Quote,
@@ -21,12 +19,12 @@ import {
     Search,
     ShoppingCart,
     FolderTree,
+    Image as ImageIcon,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
-    { href: "/homepage/hero", icon: Home, label: "Hero" },
+    { href: "/homepage/hero", icon: ImageIcon, label: "Hero" },
     { href: "/homepage/essentials", icon: LayoutGrid, label: "The Essentials" },
-    { href: "/homepage/section-titles", icon: Heading, label: "Section titles" },
     { href: "/homepage/offers", icon: Zap, label: "Offers" },
     { href: "/homepage/real-stories", icon: Video, label: "Real stories" },
     { href: "/homepage/testimonials", icon: Quote, label: "Testimonials" },
@@ -210,7 +208,7 @@ export default function Layout({ children }) {
                     </button>
                     <div>
                         <h1 className="font-bold text-[#1d1d1f] text-base leading-tight">
-                            {ALL_NAV_ITEMS.find((n) => n.href === router.pathname)?.label || "Hero"}
+                            {ALL_NAV_ITEMS.find((n) => n.href === router.pathname)?.label || "Dashboard"}
                         </h1>
                         <p className="text-xs text-[#6e6e73]">
                             {dateLabel}
