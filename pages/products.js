@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import Layout from "@/components/Layout";
 import {
     getProducts,
@@ -27,6 +28,8 @@ import {
     Package,
 } from "lucide-react";
 import Head from "next/head";
+
+const Product3DViewer = dynamic(() => import("@/components/Product3DViewer"), { ssr: false });
 
 // ─── 3-D format registry ──────────────────────────────────────────────────────
 const MODEL_FORMATS = [
@@ -312,6 +315,7 @@ const emptyProduct = {
     tags: "",
     images: [],
     models3d: [],
+    model3dView360: false,
     variants: [{ color: "", images: [], stock: 0 }],
     featured: false,
     limited: false,
@@ -386,6 +390,7 @@ export default function ProductsPage() {
             tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
             images: p.images || [],
             models3d: p.models3d || [],
+            model3dView360: !!p.model3dView360,
             variants: p.variants || [{ color: "", images: [], stock: 0 }],
             featured: !!p.featured,
             limited: !!p.limited,
@@ -414,6 +419,10 @@ export default function ProductsPage() {
             setFormError("Selected category is invalid or was removed. Please choose a category from the list.");
             return;
         }
+        if (form.isBundle && (!form.bundleProductIds || form.bundleProductIds.length < 2)) {
+            setFormError("Bundle must include at least 2 products. Select two or more products in the Bundle section.");
+            return;
+        }
         setSaving(true);
         try {
             const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
@@ -430,6 +439,7 @@ export default function ProductsPage() {
                 categoryId: categoryIdNum,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
+                model3dView360: !!form.model3dView360,
                 featured: !!form.featured,
                 limited: !!form.limited,
                 offer: !!form.offer,
@@ -711,12 +721,39 @@ export default function ProductsPage() {
                             />
 
                             {/* 3D Models ↓ */}
-                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30">
+                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30 space-y-3">
                                 <Model3DUploader
                                     label="3D Models"
                                     initialModels={form.models3d || []}
                                     onUploaded={(models) => setForm({ ...form, models3d: models })}
                                 />
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.model3dView360}
+                                        onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
+                                        className="rounded border-black/20"
+                                    />
+                                    <span className="text-sm font-medium text-[#1d1d1f]">360° view</span>
+                                </label>
+                                <p className="text-xs text-[#6e6e73]">
+                                    When on: frontend shows 3D in 360° mode (user drags to orbit). When off: model auto-rotates.
+                                </p>
+                                {form.models3d && form.models3d.length > 0 && (() => {
+                                    const firstUrl = typeof form.models3d[0] === "string" ? form.models3d[0] : form.models3d[0]?.url;
+                                    if (!firstUrl) return null;
+                                    return (
+                                        <div className="pt-2">
+                                            <p className="text-xs font-medium text-[#6e6e73] mb-2">Preview (first model)</p>
+                                            <Product3DViewer
+                                                glbUrl={firstUrl}
+                                                view360={!!form.model3dView360}
+                                                width={280}
+                                                height={200}
+                                            />
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Variants */}
