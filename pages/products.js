@@ -4,6 +4,7 @@ import Layout from "@/components/Layout";
 import {
     getProducts,
     getCategories,
+    getBrands,
     createProduct,
     updateProduct,
     deleteProduct,
@@ -223,12 +224,13 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
         onUploaded(next);
     };
 
+    const glbOnly = MODEL_FORMATS.filter((f) => f.ext === "glb");
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-[#1d1d1f]">{label}</label>
                 <div className="flex flex-wrap gap-1">
-                    {MODEL_FORMATS.map((f) => (
+                    {glbOnly.map((f) => (
                         <span key={f.ext} className="text-[9px] font-semibold uppercase bg-[#f0f0f5] text-[#6e6e73] px-1.5 py-0.5 rounded-md tracking-wide">
                             {f.label}
                         </span>
@@ -258,7 +260,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
                             {models.length > 0 ? "Click to add more 3D models" : "Click or drag & drop 3D models"}
                         </p>
                         <p className="text-xs text-[#6e6e73]">
-                            Supports GLB, GLTF, OBJ, FBX, STL, DAE, USDZ, 3DS, ABC, PLY, X3D, WRL
+                            Supports GLB
                         </p>
                     </>
                 )}
@@ -310,13 +312,14 @@ const emptyProduct = {
     price: "",
     slashedPrice: "",
     categoryId: "",
+    brandId: "",
     shippingInfo: "",
     returnInfo: "",
     tags: "",
     images: [],
     models3d: [],
     model3dView360: false,
-    variants: [{ color: "", images: [], stock: 0 }],
+    variants: [{ color: "", images: [], stock: 0, models3d: [] }],
     featured: false,
     limited: false,
     offer: false,
@@ -330,6 +333,7 @@ export default function ProductsPage() {
     const [products, setProducts] = useState([]);
     const [productsError, setProductsError] = useState(null);
     const [categories, setCategories] = useState([]);
+    const [brands, setBrands] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [categoryId, setCategoryId] = useState("");
@@ -365,6 +369,7 @@ export default function ProductsPage() {
     };
 
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
+    useEffect(() => { getBrands().then((d) => setBrands(Array.isArray(d) ? d : (d?.data ?? d?.brands ?? []))); }, []);
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
     const openCreate = () => {
@@ -385,13 +390,17 @@ export default function ProductsPage() {
             price: p.price || "",
             slashedPrice: p.slashedPrice || "",
             categoryId: p.categoryId || "",
+            brandId: p.brandId || "",
             shippingInfo: p.shippingInfo || "",
             returnInfo: p.returnInfo || "",
             tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
             images: p.images || [],
             models3d: p.models3d || [],
             model3dView360: !!p.model3dView360,
-            variants: p.variants || [{ color: "", images: [], stock: 0 }],
+            variants: (p.variants || [{ color: "", images: [], stock: 0 }]).map((v) => ({
+                ...v,
+                models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
+            })),
             featured: !!p.featured,
             limited: !!p.limited,
             offer: !!p.offer,
@@ -419,6 +428,16 @@ export default function ProductsPage() {
             setFormError("Selected category is invalid or was removed. Please choose a category from the list.");
             return;
         }
+        const brandIdNum = Number(form.brandId);
+        const validBrandIds = (brands || []).map((b) => Number(b.id)).filter((id) => id > 0);
+        if (!form.brandId || brandIdNum <= 0 || Number.isNaN(brandIdNum)) {
+            setFormError("Please select a brand. Products must be linked to a brand.");
+            return;
+        }
+        if (!validBrandIds.includes(brandIdNum)) {
+            setFormError("Selected brand is invalid or was removed. Please choose a brand from the list.");
+            return;
+        }
         if (form.isBundle && (!form.bundleProductIds || form.bundleProductIds.length < 2)) {
             setFormError("Bundle must include at least 2 products. Select two or more products in the Bundle section.");
             return;
@@ -429,6 +448,7 @@ export default function ProductsPage() {
             const variantsNormalized = (form.variants || []).map((v) => ({
                 ...v,
                 images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
+                models3d: (v.models3d || []).map((m) => (typeof m === "string" ? m : m.url)).filter(Boolean),
             }));
             const payload = {
                 ...form,
@@ -437,6 +457,7 @@ export default function ProductsPage() {
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
+                brandId: brandIdNum,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
                 model3dView360: !!form.model3dView360,
@@ -639,6 +660,16 @@ export default function ProductsPage() {
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Tags (comma-separated)</label>
                                     <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="iphone, case, magsafe" />
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Brand *</label>
+                                    <select className={INPUT} required value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.brandId}>
+                                        <option value="">Select brand</option>
+                                        {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                    {!brands.length && (
+                                        <p className="text-xs text-amber-600 mt-1">No brands loaded. Add a brand first or refresh the page.</p>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Product options: Featured, Limited, Offer, Bundle */}
@@ -761,7 +792,7 @@ export default function ProductsPage() {
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-[#1d1d1f]">Variants</label>
                                     <button type="button"
-                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0 }] })}
+                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0, models3d: [] }] })}
                                         className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#f5f5f7] hover:bg-black/10 transition-colors">
                                         + Add Variant
                                     </button>
@@ -792,6 +823,11 @@ export default function ProductsPage() {
                                             multiple
                                             initialUrls={v.images || []}
                                             onUploaded={(urls) => updateVariant(i, "images", urls)}
+                                        />
+                                        <Model3DUploader
+                                            label="Variant 3D (GLB)"
+                                            initialModels={v.models3d || []}
+                                            onUploaded={(models) => updateVariant(i, "models3d", models)}
                                         />
                                     </div>
                                 ))}
