@@ -12,10 +12,6 @@ export default function SectionTitlesPage() {
     const [form, setForm] = useState({
         featuredTitle: "",
         featuredLabel: "",
-        designInspirationLabel: "",
-        designInspirationTitle: "",
-        designInspirationDescription: "",
-        designInspirationCtaText: "",
         testimonialsLabel: "",
         testimonialsTitle: "",
         journalLabel: "",
@@ -29,14 +25,9 @@ export default function SectionTitlesPage() {
         setError(null);
         try {
             const d = await getHomepageContent();
-            const di = d.designInspiration || {};
             setForm({
                 featuredTitle: d.featuredTitle ?? "",
                 featuredLabel: d.featuredLabel ?? "",
-                designInspirationLabel: di.label ?? "",
-                designInspirationTitle: di.title ?? "",
-                designInspirationDescription: di.description ?? "",
-                designInspirationCtaText: di.ctaText ?? "",
                 testimonialsLabel: d.testimonialsLabel ?? "",
                 testimonialsTitle: d.testimonialsTitle ?? "",
                 journalLabel: d.journalLabel ?? "",
@@ -57,12 +48,6 @@ export default function SectionTitlesPage() {
             await updateHomepageContent({
                 featuredTitle: form.featuredTitle || undefined,
                 featuredLabel: form.featuredLabel || undefined,
-                designInspiration: {
-                    label: form.designInspirationLabel || undefined,
-                    title: form.designInspirationTitle || undefined,
-                    description: form.designInspirationDescription || undefined,
-                    ctaText: form.designInspirationCtaText || undefined,
-                },
                 testimonialsLabel: form.testimonialsLabel || undefined,
                 testimonialsTitle: form.testimonialsTitle || undefined,
                 journalLabel: form.journalLabel || undefined,
@@ -105,13 +90,6 @@ export default function SectionTitlesPage() {
                             <h3 className="text-sm font-semibold text-[#1d1d1f]">Featured</h3>
                             <div><label className="block text-sm text-[#6e6e73] mb-1">Label</label><input className={INPUT} value={form.featuredLabel} onChange={(e) => update("featuredLabel", e.target.value)} placeholder="Selected Range" /></div>
                             <div><label className="block text-sm text-[#6e6e73] mb-1">Title</label><input className={INPUT} value={form.featuredTitle} onChange={(e) => update("featuredTitle", e.target.value)} placeholder="Featured Collections" /></div>
-                        </div>
-                        <div className="space-y-4 pt-4 border-t border-black/5">
-                            <h3 className="text-sm font-semibold text-[#1d1d1f]">Design Inspiration</h3>
-                            <div><label className="block text-sm text-[#6e6e73] mb-1">Label</label><input className={INPUT} value={form.designInspirationLabel} onChange={(e) => update("designInspirationLabel", e.target.value)} placeholder="Showcase" /></div>
-                            <div><label className="block text-sm text-[#6e6e73] mb-1">Title</label><input className={INPUT} value={form.designInspirationTitle} onChange={(e) => update("designInspirationTitle", e.target.value)} placeholder="Design Inspiration" /></div>
-                            <div><label className="block text-sm text-[#6e6e73] mb-1">Description</label><textarea className={INPUT} rows={2} value={form.designInspirationDescription} onChange={(e) => update("designInspirationDescription", e.target.value)} placeholder="Short paragraph" /></div>
-                            <div><label className="block text-sm text-[#6e6e73] mb-1">CTA text</label><input className={INPUT} value={form.designInspirationCtaText} onChange={(e) => update("designInspirationCtaText", e.target.value)} placeholder="Explore Gallery" /></div>
                         </div>
                         <div className="space-y-4 pt-4 border-t border-black/5">
                             <h3 className="text-sm font-semibold text-[#1d1d1f]">Testimonials</h3>

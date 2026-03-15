@@ -14,6 +14,8 @@ export default function EssentialsPage() {
     const [sectionTitle, setSectionTitle] = useState("");
     const [sectionDescription, setSectionDescription] = useState("");
     const [categories, setCategories] = useState([]);
+    const [savedSection, setSavedSection] = useState(null);
+    const [savedCategories, setSavedCategories] = useState([]);
     const [uploadingIndex, setUploadingIndex] = useState(null);
     const fileInputRef = useRef(null);
 
@@ -22,15 +24,23 @@ export default function EssentialsPage() {
         setError(null);
         try {
             const d = await getEssentials();
-            setSectionLabel(d.sectionLabel ?? "");
-            setSectionTitle(d.sectionTitle ?? "");
-            setSectionDescription(d.sectionDescription ?? "");
-            setCategories(d.categories || []);
+            const label = d.sectionLabel ?? "";
+            const title = d.sectionTitle ?? "";
+            const desc = d.sectionDescription ?? "";
+            const cats = d.categories || [];
+            setSectionLabel(label);
+            setSectionTitle(title);
+            setSectionDescription(desc);
+            setCategories(cats);
+            setSavedSection({ sectionLabel: label, sectionTitle: title, sectionDescription: desc });
+            setSavedCategories(cats);
         } catch (e) { setError(e?.message || "Failed to load essentials"); }
         finally { setLoading(false); }
     };
 
     useEffect(() => { fetchData(); }, []);
+
+    const isDirty = savedSection === null ? false : sectionLabel !== savedSection.sectionLabel || sectionTitle !== savedSection.sectionTitle || sectionDescription !== savedSection.sectionDescription || JSON.stringify(categories) !== JSON.stringify(savedCategories);
 
     const addCategory = () => setCategories((c) => [...c, { id: "", title: "", src: "", isCustom: false }]);
     const removeCategory = (i) => setCategories((c) => c.filter((_, j) => j !== i));
@@ -59,8 +69,9 @@ export default function EssentialsPage() {
                 sectionDescription: sectionDescription || undefined,
                 categories: categories.map((x) => ({ id: x.id, title: x.title, src: x.src, isCustom: !!x.isCustom })),
             });
+            setSavedSection({ sectionLabel: sectionLabel, sectionTitle: sectionTitle, sectionDescription: sectionDescription });
+            setSavedCategories(categories);
             alert("The Essentials saved.");
-            fetchData();
         } catch (e) { alert(e.message); }
         finally { setSaving(false); }
     };
@@ -87,7 +98,7 @@ export default function EssentialsPage() {
                         </div>
                     )}
                     {!error && (
-                    <form onSubmit={handleSave} className="space-y-6">
+                    <div className="space-y-6">
                         <div className="space-y-3">
                             <div><label className="block text-sm font-medium text-[#1d1d1f] mb-1">Section label</label><input className={INPUT} value={sectionLabel} onChange={(e) => setSectionLabel(e.target.value)} placeholder="Ecosystem" /></div>
                             <div><label className="block text-sm font-medium text-[#1d1d1f] mb-1">Section title</label><input className={INPUT} value={sectionTitle} onChange={(e) => setSectionTitle(e.target.value)} placeholder="The Essentials" /></div>
@@ -98,6 +109,19 @@ export default function EssentialsPage() {
                                 <label className="block text-sm font-medium text-[#1d1d1f]">Categories</label>
                                 <button type="button" onClick={addCategory} className="flex items-center gap-1.5 text-sm font-medium text-[#1d1d1f] hover:underline"><Plus size={16} /> Add</button>
                             </div>
+                            {categories.length > 0 && (
+                                <div className="mb-3 space-y-2">
+                                    <p className="text-xs font-medium text-[#6e6e73]">Saved categories (list)</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {categories.map((cat, i) => (
+                                            <div key={i} className="flex items-center gap-2 p-2 rounded-xl border border-black/5 bg-[#f5f5f7]/50">
+                                                {cat.src ? <img src={cat.src} alt="" className="w-8 h-8 object-cover rounded-lg shrink-0" /> : null}
+                                                <span className="text-sm font-medium text-[#1d1d1f] truncate max-w-[120px]">{cat.title || "Untitled"}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
                             <div className="space-y-3">
                                 {categories.map((cat, i) => (
@@ -118,10 +142,10 @@ export default function EssentialsPage() {
                                 ))}
                             </div>
                         </div>
-                        <button type="submit" disabled={saving} className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-60">
+                        <button type="button" onClick={handleSave} disabled={saving || !isDirty} className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed">
                             {saving ? "Saving..." : "Save"}
                         </button>
-                    </form>
+                    </div>
                     )}
                 </div>
             </Layout>

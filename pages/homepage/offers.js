@@ -6,6 +6,10 @@ import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
 
+function offersEqual(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export default function HomepageOffersPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -13,7 +17,9 @@ export default function HomepageOffersPage() {
     const [flashSale, setFlashSale] = useState({
         badge: "", title: "", subtitle: "", discount: "", offerLabel: "", timerValue: "", buttonText: "", link: "", imageUrl: "",
     });
+    const [savedFlashSale, setSavedFlashSale] = useState(null);
     const [secondaryOffers, setSecondaryOffers] = useState([]);
+    const [savedSecondaryOffers, setSavedSecondaryOffers] = useState([]);
     const [flashSaleUploading, setFlashSaleUploading] = useState(false);
     const flashSaleFileRef = useRef(null);
 
@@ -22,7 +28,7 @@ export default function HomepageOffersPage() {
         setError(null);
         try {
             const d = await getHomepageOffers();
-            setFlashSale({
+            const fs = {
                 badge: d.flashSale?.badge ?? "",
                 title: d.flashSale?.title ?? "",
                 subtitle: d.flashSale?.subtitle ?? "",
@@ -32,13 +38,19 @@ export default function HomepageOffersPage() {
                 buttonText: d.flashSale?.buttonText ?? "",
                 link: d.flashSale?.link ?? "",
                 imageUrl: d.flashSale?.imageUrl ?? "",
-            });
-            setSecondaryOffers(d.secondaryOffers || []);
+            };
+            setFlashSale(fs);
+            setSavedFlashSale(fs);
+            const sec = d.secondaryOffers || [];
+            setSecondaryOffers(sec);
+            setSavedSecondaryOffers(sec);
         } catch (e) { setError(e?.message || "Failed to load offers"); }
         finally { setLoading(false); }
     };
 
     useEffect(() => { fetchData(); }, []);
+
+    const isDirty = savedFlashSale === null ? false : !offersEqual(flashSale, savedFlashSale) || !offersEqual(secondaryOffers, savedSecondaryOffers);
 
     const addSecondary = () => setSecondaryOffers((s) => [...s, { id: "", type: "", title: "", description: "", cta: "", link: "", theme: "" }]);
     const removeSecondary = (i) => setSecondaryOffers((s) => s.filter((_, j) => j !== i));
@@ -83,8 +95,9 @@ export default function HomepageOffersPage() {
                     theme: x.theme || undefined,
                 })),
             });
+            setSavedFlashSale(flashSale);
+            setSavedSecondaryOffers(secondaryOffers);
             alert("Offers saved.");
-            fetchData();
         } catch (e) { alert(e.message); }
         finally { setSaving(false); }
     };
@@ -111,7 +124,7 @@ export default function HomepageOffersPage() {
                         </div>
                     )}
                     {!error && (
-                    <form onSubmit={handleSave} className="space-y-6">
+                    <div className="space-y-6">
                         <div className="p-4 rounded-2xl border border-black/10 bg-white space-y-3">
                             <h3 className="font-semibold text-[#1d1d1f]">Flash sale (main card)</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -142,6 +155,19 @@ export default function HomepageOffersPage() {
                                 <h3 className="font-semibold text-[#1d1d1f]">Secondary offers</h3>
                                 <button type="button" onClick={addSecondary} className="flex items-center gap-1.5 text-sm font-medium text-[#1d1d1f] hover:underline"><Plus size={16} /> Add</button>
                             </div>
+                            {secondaryOffers.length > 0 && (
+                                <div className="mb-3 space-y-2">
+                                    <p className="text-xs font-medium text-[#6e6e73]">Saved offers (list)</p>
+                                    {secondaryOffers.map((o, i) => (
+                                        <div key={i} className="p-3 rounded-xl border border-black/5 bg-[#f5f5f7]/50 flex items-center gap-3">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-[#1d1d1f] text-sm truncate">{o.title || "Untitled"}</p>
+                                                <p className="text-xs text-[#6e6e73] truncate">{o.type || "—"} · {o.description || "—"}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             <div className="space-y-3">
                                 {secondaryOffers.map((o, i) => (
                                     <div key={i} className="p-4 rounded-xl border border-black/10 bg-white grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -156,10 +182,10 @@ export default function HomepageOffersPage() {
                                 ))}
                             </div>
                         </div>
-                        <button type="submit" disabled={saving} className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-60">
+                        <button type="button" onClick={handleSave} disabled={saving || !isDirty} className="bg-[#1d1d1f] text-white px-6 py-2.5 rounded-xl text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed">
                             {saving ? "Saving..." : "Save offers"}
                         </button>
-                    </form>
+                    </div>
                     )}
                 </div>
             </Layout>

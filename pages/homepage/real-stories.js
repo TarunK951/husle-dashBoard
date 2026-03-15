@@ -211,16 +211,16 @@ export default function RealStoriesPage() {
                         <p className="text-sm text-[#6e6e73] py-4">No items yet. Click Add to create one, then Save to store it.</p>
                     )}
 
-                    {isDirty && (
-                        <div className="flex gap-3 pt-2 border-t border-black/10">
-                            <button type="button" onClick={handleCancel} className="flex-1 py-2.5 rounded-xl border border-black/10 text-sm font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors">
+                    <div className="flex gap-3 pt-2 border-t border-black/10">
+                        {isDirty && (
+                            <button type="button" onClick={handleCancel} className="py-2.5 px-4 rounded-xl border border-black/10 text-sm font-medium text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors">
                                 Cancel
                             </button>
-                            <button type="button" onClick={handleSave} disabled={saving} className="flex-1 py-2.5 rounded-xl bg-[#1d1d1f] text-white text-sm font-semibold hover:bg-black disabled:opacity-60 transition-colors">
-                                {saving ? "Saving…" : "Save"}
-                            </button>
-                        </div>
-                    )}
+                        )}
+                        <button type="button" onClick={handleSave} disabled={saving || !isDirty} className="py-2.5 px-6 rounded-xl bg-[#1d1d1f] text-white text-sm font-semibold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                            {saving ? "Saving…" : "Save"}
+                        </button>
+                    </div>
                     </>
                     )}
                 </div>
