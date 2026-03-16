@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
-import { getEssentials, updateEssentials, uploadImage } from "@/lib/api";
+import { getEssentials, updateEssentials, uploadImage, getCategories } from "@/lib/api";
 import { Plus, Trash2, Upload } from "lucide-react";
 import Head from "next/head";
 
@@ -14,6 +14,7 @@ function normalizeItem(x) {
     id: x?.id ?? "",
     image: x?.image ?? x?.src ?? "",
     title: x?.title ?? "",
+    categoryId: x?.categoryId ?? "",
   };
 }
 
@@ -21,10 +22,8 @@ export default function EssentialsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [sectionLabel, setSectionLabel] = useState("");
-  const [sectionTitle, setSectionTitle] = useState("");
-  const [sectionDescription, setSectionDescription] = useState("");
   const [categories, setCategories] = useState([]);
+  const [productCategories, setProductCategories] = useState([]);
   const [uploadingIndex, setUploadingIndex] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -32,12 +31,14 @@ export default function EssentialsPage() {
     setLoading(true);
     setError(null);
     try {
-      const d = await getEssentials();
-      setSectionLabel(d.sectionLabel ?? "");
-      setSectionTitle(d.sectionTitle ?? "");
-      setSectionDescription(d.sectionDescription ?? "");
+      const [d, cats] = await Promise.all([
+        getEssentials(),
+        getCategories().catch(() => []),
+      ]);
       const raw = Array.isArray(d.categories) ? d.categories : [];
       setCategories(raw.map(normalizeItem));
+      const catList = Array.isArray(cats) ? cats : (cats?.data && Array.isArray(cats.data) ? cats.data : []);
+      setProductCategories(catList);
     } catch (e) {
       setError(e?.message || "Failed to load essentials");
       setCategories([]);
@@ -52,7 +53,7 @@ export default function EssentialsPage() {
 
   const addItem = () =>
     setCategories((c) =>
-      c.length >= MAX_ITEMS ? c : [...c, { id: "", image: "", title: "" }],
+      c.length >= MAX_ITEMS ? c : [...c, { id: "", image: "", title: "", categoryId: "" }],
     );
   const removeItem = (i) =>
     setCategories((c) => (c.length <= 1 ? c : c.filter((_, j) => j !== i)));
@@ -93,13 +94,11 @@ export default function EssentialsPage() {
     setSaving(true);
     try {
       await updateEssentials({
-        sectionLabel: sectionLabel || undefined,
-        sectionTitle: sectionTitle || undefined,
-        sectionDescription: sectionDescription || undefined,
         categories: categories.slice(0, MAX_ITEMS).map((x) => ({
           id: x.id || undefined,
           image: x.image || "",
           title: x.title || "",
+          categoryId: x.categoryId || undefined,
         })),
       });
       alert("The Essentials saved.");
@@ -132,9 +131,9 @@ export default function EssentialsPage() {
       <Layout>
         <div className="space-y-6 fade-in max-w-2xl">
           <p className="text-sm text-[#6e6e73]">
-            Gallery section: optional section label, title, description; up to{" "}
-            {MAX_ITEMS} cards. Each card has <strong>image</strong> and{" "}
-            <strong>title</strong> only. You can add only one more item (max{" "}
+            Gallery section: up to {MAX_ITEMS} cards. Each card has{" "}
+            <strong>image</strong>, <strong>title</strong>, and optional{" "}
+            <strong>redirect category</strong>. You can add only one more item (max{" "}
             {MAX_ITEMS}).
           </p>
           {error && (
@@ -150,48 +149,7 @@ export default function EssentialsPage() {
           )}
           {!error && (
             <form onSubmit={handleSave} className="space-y-6">
-              {/* Section header */}
-              <div className="rounded-2xl border border-black/10 bg-white p-5 space-y-4">
-                <h2 className="text-sm font-semibold text-[#1d1d1f]">
-                  Section header (optional)
-                </h2>
-                <div>
-                  <label className="block text-sm font-medium text-[#1d1d1f] mb-1">
-                    Section label
-                  </label>
-                  <input
-                    className={INPUT}
-                    value={sectionLabel}
-                    onChange={(e) => setSectionLabel(e.target.value)}
-                    placeholder="e.g. Ecosystem"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#1d1d1f] mb-1">
-                    Section title
-                  </label>
-                  <input
-                    className={INPUT}
-                    value={sectionTitle}
-                    onChange={(e) => setSectionTitle(e.target.value)}
-                    placeholder="e.g. The Essentials"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#1d1d1f] mb-1">
-                    Section description
-                  </label>
-                  <textarea
-                    className={INPUT}
-                    rows={2}
-                    value={sectionDescription}
-                    onChange={(e) => setSectionDescription(e.target.value)}
-                    placeholder="e.g. A curated selection of premium protection..."
-                  />
-                </div>
-              </div>
-
-              {/* Cards (image + title only) */}
+              {/* Cards (image + title + redirect category) */}
               <div className="rounded-2xl border border-black/10 bg-white p-5 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold text-[#1d1d1f]">
@@ -243,6 +201,29 @@ export default function EssentialsPage() {
                             updateItem(i, "title", e.target.value)
                           }
                         />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-[#6e6e73] mb-1">
+                          Redirect to category
+                        </label>
+                        <select
+                          className={INPUT}
+                          value={cat.categoryId ?? ""}
+                          onChange={(e) =>
+                            updateItem(i, "categoryId", e.target.value)
+                          }>
+                          <option value="">No redirect</option>
+                          {productCategories.map((pc) => (
+                            <option key={pc.id} value={pc.id}>
+                              {pc.name ?? `Category ${pc.id}`}
+                            </option>
+                          ))}
+                        </select>
+                        {productCategories.length === 0 && (
+                          <p className="text-xs text-[#6e6e73] mt-1">
+                            No product categories. Add categories in Categories first.
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-end gap-2">
                         <div className="flex-1 min-w-[180px]">

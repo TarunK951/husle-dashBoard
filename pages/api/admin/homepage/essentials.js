@@ -5,8 +5,8 @@
  * PUT  /api/admin/homepage/essentials – update essentials (admin; same body shape)
  *
  * Contract:
- * - Response: { sectionLabel?, sectionTitle?, sectionDescription?, categories: [{ id?, image, title }] }
- * - Per card only: image (required), title (required), id (optional). No extra fields.
+ * - Response: { categories: [{ id?, image, title, categoryId? }] }
+ * - Per card: image (required), title (required), id (optional), categoryId (optional, redirect to product category).
  * - Min 1 item, max 8 items. Only one more item can be added (e.g. 7 → 8).
  */
 
@@ -20,10 +20,6 @@ const DATA_FILE = path.join(process.cwd(), "data", "homepage-essentials.json");
 
 function getDefaultPayload() {
   return {
-    sectionLabel: "Ecosystem",
-    sectionTitle: "The Essentials",
-    sectionDescription:
-      "A curated selection of premium protection, power, and acoustic accessories.",
     categories: [
       { id: 1, image: "https://example.com/iphone-cases.jpg", title: "iPhone Cases" },
       { id: 2, image: "https://example.com/camera-lenses.jpg", title: "Camera Lenses" },
@@ -54,12 +50,16 @@ function writeStored(payload) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2), "utf8");
 }
 
-/** Normalize one category: only id, image, title. */
+/** Normalize one category: id, image, title, categoryId (optional redirect). */
 function normalizeCategory(item, index) {
   const id = item?.id !== undefined && item?.id !== null ? item.id : index + 1;
   const image = typeof item?.image === "string" ? item.image.trim() : "";
   const title = typeof item?.title === "string" ? item.title.trim() : "";
-  return { id, image, title };
+  const categoryId =
+    item?.categoryId !== undefined && item?.categoryId !== null && item?.categoryId !== ""
+      ? String(item.categoryId).trim()
+      : undefined;
+  return { id, image, title, ...(categoryId ? { categoryId } : {}) };
 }
 
 /** Validate and normalize body. Returns { ok, payload, error }. */
@@ -85,17 +85,7 @@ function validatePutBody(body) {
     return { ok: false, error: `Category ${missing + 1}: image and title are required` };
   }
 
-  const payload = {
-    sectionLabel:
-      typeof body.sectionLabel === "string" ? body.sectionLabel : undefined,
-    sectionTitle:
-      typeof body.sectionTitle === "string" ? body.sectionTitle : undefined,
-    sectionDescription:
-      typeof body.sectionDescription === "string"
-        ? body.sectionDescription
-        : undefined,
-    categories: normalized,
-  };
+  const payload = { categories: normalized };
 
   return { ok: true, payload };
 }
