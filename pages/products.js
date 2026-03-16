@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Layout from "@/components/Layout";
 import {
@@ -368,8 +368,33 @@ export default function ProductsPage() {
         }
     };
 
-    useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
-    useEffect(() => { getBrands().then((d) => setBrands(Array.isArray(d) ? d : (d?.data ?? d?.brands ?? []))); }, []);
+    useEffect(() => { getCategories().then((d) => setCategories(Array.isArray(d) ? d : (d?.data ?? d?.categories ?? []))); }, []);
+    useEffect(() => {
+        getBrands()
+            .then((d) => setBrands(Array.isArray(d) ? d : (d?.data ?? d?.brands ?? [])))
+            .catch(() => setBrands([]));
+    }, []);
+
+    // Brand dropdown: API brands + categories under the "brand" Sort by group (Categories page)
+    const brandOptions = useMemo(() => {
+        const apiList = Array.isArray(brands) ? brands : [];
+        const catList = Array.isArray(categories) ? categories : [];
+        const brandGroup = catList.find(
+            (c) => (c.parentId == null || c.parentId === "") && String(c.name || "").toLowerCase().trim() === "brand"
+        );
+        if (!brandGroup) return apiList;
+        const seen = new Set(apiList.map((b) => b.id));
+        const fromGroup = catList.filter((c) => Number(c.parentId) === Number(brandGroup.id));
+        const merged = [...apiList];
+        fromGroup.forEach((c) => {
+            if (!seen.has(c.id)) {
+                seen.add(c.id);
+                merged.push({ id: c.id, name: c.name || "" });
+            }
+        });
+        return merged;
+    }, [brands, categories]);
+
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
     const openCreate = () => {
@@ -429,13 +454,13 @@ export default function ProductsPage() {
             return;
         }
         const brandIdNum = Number(form.brandId);
-        const validBrandIds = (brands || []).map((b) => Number(b.id)).filter((id) => id > 0);
-        if (!form.brandId || brandIdNum <= 0 || Number.isNaN(brandIdNum)) {
-            setFormError("Please select a brand. Products must be linked to a brand.");
+        const validBrandIds = (brandOptions || []).map((b) => Number(b.id)).filter((id) => id > 0);
+        if (form.brandId && (brandIdNum <= 0 || Number.isNaN(brandIdNum))) {
+            setFormError("Please select a valid brand or leave brand unset.");
             return;
         }
-        if (!validBrandIds.includes(brandIdNum)) {
-            setFormError("Selected brand is invalid or was removed. Please choose a brand from the list.");
+        if (form.brandId && validBrandIds.length && !validBrandIds.includes(brandIdNum)) {
+            setFormError("Selected brand is invalid or was removed. Please choose a brand from the list or leave unset.");
             return;
         }
         if (form.isBundle && (!form.bundleProductIds || form.bundleProductIds.length < 2)) {
@@ -457,7 +482,7 @@ export default function ProductsPage() {
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
-                brandId: brandIdNum,
+                ...(brandIdNum > 0 ? { brandId: brandIdNum } : {}),
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
                 model3dView360: !!form.model3dView360,
@@ -661,13 +686,15 @@ export default function ProductsPage() {
                                     <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="iphone, case, magsafe" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Brand *</label>
-                                    <select className={INPUT} required value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.brandId}>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Brand (optional)</label>
+                                    <select className={INPUT} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.brandId}>
                                         <option value="">Select brand</option>
-                                        {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                        {brandOptions.map((b) => (
+                                            <option key={b.id} value={b.id}>{b.name}</option>
+                                        ))}
                                     </select>
-                                    {!brands.length && (
-                                        <p className="text-xs text-amber-600 mt-1">No brands loaded. Add a brand first or refresh the page.</p>
+                                    {!brandOptions.length && (
+                                        <p className="text-xs text-amber-600 mt-1">No brands loaded. Add brands in Brands, or add categories under the &quot;brand&quot; Sort by in Categories.</p>
                                     )}
                                 </div>
                             </div>
