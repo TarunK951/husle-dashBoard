@@ -23,7 +23,13 @@ export default function LoginPage() {
                 setLoading(false);
                 return;
             }
-            localStorage.setItem("hustle_admin_token", data.token);
+            const token = data.token ?? data.accessToken ?? data.access_token;
+            if (!token || (typeof token !== "string" && typeof token !== "number")) {
+                setError("Login response missing token.");
+                setLoading(false);
+                return;
+            }
+            localStorage.setItem("hustle_admin_token", String(token));
             localStorage.setItem("hustle_admin_user", JSON.stringify(data.user));
             router.replace("/");
         } catch (err) {

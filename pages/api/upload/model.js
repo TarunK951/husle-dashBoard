@@ -22,7 +22,8 @@ export const config = {
     },
 };
 
-const BACKEND_UPLOAD_URL = "https://server.huslelifestyle.com/api/upload";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://server.huslelifestyle.com/api";
+const BACKEND_UPLOAD_URL = `${API_BASE.replace(/\/$/, "")}/upload`;
 
 /** Read the entire request body into a Buffer */
 async function readBody(req) {

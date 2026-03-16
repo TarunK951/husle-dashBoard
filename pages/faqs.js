@@ -15,7 +15,7 @@ function FaqItem({ faq, onDelete }) {
                 className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#f5f5f7]/50 transition-colors text-left"
             >
                 <span className="font-medium text-[#1d1d1f] text-sm pr-4">{faq.question}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                     {faq.category && (
                         <span className="text-xs px-2 py-1 bg-[#f5f5f7] rounded-lg text-[#6e6e73] font-medium capitalize">{faq.category}</span>
                     )}
@@ -40,13 +40,18 @@ function FaqItem({ faq, onDelete }) {
 export default function FaqsPage() {
     const [faqs, setFaqs] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const [show, setShow] = useState(false);
     const [form, setForm] = useState({ question: "", answer: "", category: "general" });
     const [saving, setSaving] = useState(false);
 
     const fetch = () => {
         setLoading(true);
-        getFaqs().then((d) => setFaqs(d.data || d || [])).catch(console.error).finally(() => setLoading(false));
+        setError(null);
+        getFaqs()
+            .then((d) => { setFaqs(d.data || d || []); setError(null); })
+            .catch((e) => { setError(e?.message || "Failed to load FAQs"); setFaqs([]); })
+            .finally(() => setLoading(false));
     };
 
     useEffect(() => { fetch(); }, []);
@@ -65,8 +70,12 @@ export default function FaqsPage() {
 
     const handleDelete = async (id) => {
         if (!confirm("Delete this FAQ?")) return;
-        await deleteFaq(id);
-        fetch();
+        try {
+            await deleteFaq(id);
+            fetch();
+        } catch (e) {
+            alert(e?.message || "Failed to delete FAQ");
+        }
     };
 
     return (
@@ -81,17 +90,23 @@ export default function FaqsPage() {
                         </button>
                     </div>
 
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button type="button" onClick={() => fetch()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
                     {loading ? (
                         <div className="space-y-3">
                             {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-16 rounded-2xl" />)}
                         </div>
-                    ) : faqs.length === 0 ? (
+                    ) : faqs.length === 0 && !error ? (
                         <div className="bg-white rounded-2xl p-16 text-center text-[#6e6e73] text-sm border border-black/5">No FAQs yet. Add your first one!</div>
-                    ) : (
+                    ) : !error ? (
                         <div className="space-y-2">
                             {faqs.map((f) => <FaqItem key={f.id} faq={f} onDelete={handleDelete} />)}
                         </div>
-                    )}
+                    ) : null}
                 </div>
 
                 {show && (

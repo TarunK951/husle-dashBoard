@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import Layout from "@/components/Layout";
 import {
     getProducts,
     getCategories,
+    getBrands,
     createProduct,
     updateProduct,
     deleteProduct,
@@ -23,8 +25,12 @@ import {
     Box,
     FileText,
     CheckCircle2,
+    Tag,
+    Package,
 } from "lucide-react";
 import Head from "next/head";
+
+const Product3DViewer = dynamic(() => import("@/components/Product3DViewer"), { ssr: false });
 
 // ─── 3-D format registry ──────────────────────────────────────────────────────
 const MODEL_FORMATS = [
@@ -75,11 +81,11 @@ function ModelBadge({ ext }) {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 sticky top-0 bg-white z-10 rounded-t-2xl">
                     <h2 className="font-bold text-[#1d1d1f]">{title}</h2>
-                    <button onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
+                    <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
                         <X size={18} />
                     </button>
                 </div>
@@ -218,12 +224,13 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
         onUploaded(next);
     };
 
+    const glbOnly = MODEL_FORMATS.filter((f) => f.ext === "glb");
     return (
         <div className="space-y-2">
             <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-[#1d1d1f]">{label}</label>
                 <div className="flex flex-wrap gap-1">
-                    {MODEL_FORMATS.map((f) => (
+                    {glbOnly.map((f) => (
                         <span key={f.ext} className="text-[9px] font-semibold uppercase bg-[#f0f0f5] text-[#6e6e73] px-1.5 py-0.5 rounded-md tracking-wide">
                             {f.label}
                         </span>
@@ -253,7 +260,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
                             {models.length > 0 ? "Click to add more 3D models" : "Click or drag & drop 3D models"}
                         </p>
                         <p className="text-xs text-[#6e6e73]">
-                            Supports GLB, GLTF, OBJ, FBX, STL, DAE, USDZ, 3DS, ABC, PLY, X3D, WRL
+                            Supports GLB
                         </p>
                     </>
                 )}
@@ -305,45 +312,77 @@ const emptyProduct = {
     price: "",
     slashedPrice: "",
     categoryId: "",
+    brandId: "",
     shippingInfo: "",
     returnInfo: "",
     tags: "",
     images: [],
-    models3d: [],          // NEW — array of { url, name, ext }
-    variants: [{ color: "", images: [], stock: 0 }],
+    models3d: [],
+    model3dView360: false,
+    variants: [{ color: "", images: [], stock: 0, models3d: [] }],
+    featured: false,
+    limited: false,
+    offer: false,
+    discount: "",
+    isBundle: false,
+    bundleProductIds: [],
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
+    const [productsError, setProductsError] = useState(null);
     const [categories, setCategories] = useState([]);
+    const [brands, setBrands] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
+    const [categoryId, setCategoryId] = useState("");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [modal, setModal] = useState(null);
     const [editTarget, setEditTarget] = useState(null);
     const [form, setForm] = useState(emptyProduct);
     const [saving, setSaving] = useState(false);
+    const [bundleProductList, setBundleProductList] = useState([]);
+    const [formError, setFormError] = useState(null);
 
     const fetchProducts = async () => {
         setLoading(true);
+        setProductsError(null);
         try {
-            const data = await getProducts({ page, limit: 10, search });
-            setProducts(data.products || data.data || []);
-            if (data.totalPages) setTotalPages(data.totalPages);
+            const limitNum = 10;
+            const data = await getProducts({ page, limit: limitNum, search, categoryId: categoryId || undefined });
+            // Backend may return { products }, { data: [] }, { items }, or array
+            const list = Array.isArray(data)
+                ? data
+                : (data.products || data.data || data.items || []);
+            setProducts(Array.isArray(list) ? list : []);
+            const total = data.total ?? data.totalCount ?? list.length;
+            setTotalPages(data.totalPages ?? (typeof total === "number" && limitNum > 0 ? Math.ceil(total / limitNum) : 1));
         } catch (e) {
             console.error(e);
+            setProductsError(e?.message || "Failed to load products");
+            setProducts([]);
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => { getCategories().then((d) => setCategories(d.data || d || [])); }, []);
-    useEffect(() => { fetchProducts(); }, [page, search]);
+    useEffect(() => { getBrands().then((d) => setBrands(Array.isArray(d) ? d : (d?.data ?? d?.brands ?? []))); }, []);
+    useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
-    const openCreate = () => { setForm(emptyProduct); setModal("create"); };
+    const openCreate = () => {
+        setForm(emptyProduct);
+        setFormError(null);
+        setModal("create");
+        getProducts({ limit: 200 }).then((data) => {
+            const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
+            setBundleProductList(Array.isArray(list) ? list : []);
+        }).catch(() => setBundleProductList([]));
+    };
     const openEdit = (p) => {
+        setFormError(null);
         setEditTarget(p);
         setForm({
             name: p.name || "",
@@ -351,35 +390,90 @@ export default function ProductsPage() {
             price: p.price || "",
             slashedPrice: p.slashedPrice || "",
             categoryId: p.categoryId || "",
+            brandId: p.brandId || "",
             shippingInfo: p.shippingInfo || "",
             returnInfo: p.returnInfo || "",
             tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
             images: p.images || [],
             models3d: p.models3d || [],
-            variants: p.variants || [{ color: "", images: [], stock: 0 }],
+            model3dView360: !!p.model3dView360,
+            variants: (p.variants || [{ color: "", images: [], stock: 0 }]).map((v) => ({
+                ...v,
+                models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
+            })),
+            featured: !!p.featured,
+            limited: !!p.limited,
+            offer: !!p.offer,
+            discount: p.discount != null ? String(p.discount) : "",
+            isBundle: !!p.isBundle,
+            bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
         });
         setModal("edit");
+        getProducts({ limit: 200 }).then((data) => {
+            const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
+            setBundleProductList(Array.isArray(list) ? list : []);
+        }).catch(() => setBundleProductList([]));
     };
 
     const handleSave = async (e) => {
         e.preventDefault();
+        setFormError(null);
+        const categoryIdNum = Number(form.categoryId);
+        const validCategoryIds = (categories || []).map((c) => Number(c.id)).filter((id) => id > 0);
+        if (!form.categoryId || categoryIdNum <= 0 || Number.isNaN(categoryIdNum)) {
+            setFormError("Please select a category. Products must be linked to an existing category.");
+            return;
+        }
+        if (!validCategoryIds.includes(categoryIdNum)) {
+            setFormError("Selected category is invalid or was removed. Please choose a category from the list.");
+            return;
+        }
+        const brandIdNum = Number(form.brandId);
+        const validBrandIds = (brands || []).map((b) => Number(b.id)).filter((id) => id > 0);
+        if (!form.brandId || brandIdNum <= 0 || Number.isNaN(brandIdNum)) {
+            setFormError("Please select a brand. Products must be linked to a brand.");
+            return;
+        }
+        if (!validBrandIds.includes(brandIdNum)) {
+            setFormError("Selected brand is invalid or was removed. Please choose a brand from the list.");
+            return;
+        }
+        if (form.isBundle && (!form.bundleProductIds || form.bundleProductIds.length < 2)) {
+            setFormError("Bundle must include at least 2 products. Select two or more products in the Bundle section.");
+            return;
+        }
         setSaving(true);
         try {
+            const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
+            const variantsNormalized = (form.variants || []).map((v) => ({
+                ...v,
+                images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
+                models3d: (v.models3d || []).map((m) => (typeof m === "string" ? m : m.url)).filter(Boolean),
+            }));
             const payload = {
                 ...form,
+                images: imagesArray,
+                variants: variantsNormalized,
                 price: Number(form.price),
-                slashedPrice: Number(form.slashedPrice),
-                categoryId: Number(form.categoryId),
+                slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
+                categoryId: categoryIdNum,
+                brandId: brandIdNum,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
-                // Send only URLs for models to keep payload lean
                 models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
+                model3dView360: !!form.model3dView360,
+                featured: !!form.featured,
+                limited: !!form.limited,
+                offer: !!form.offer,
+                discount: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
+                isBundle: !!form.isBundle,
+                bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
             };
             if (modal === "create") await createProduct(payload);
             else await updateProduct(editTarget.id, payload);
             setModal(null);
             fetchProducts();
         } catch (e) {
-            alert(e.message);
+            setFormError(e?.message || "Failed to save product.");
         } finally {
             setSaving(false);
         }
@@ -387,8 +481,12 @@ export default function ProductsPage() {
 
     const handleDelete = async (id) => {
         if (!confirm("Delete this product?")) return;
-        await deleteProduct(id);
-        fetchProducts();
+        try {
+            await deleteProduct(id);
+            fetchProducts();
+        } catch (e) {
+            alert(e.message || "Failed to delete product");
+        }
     };
 
     const updateVariant = (i, field, value) => {
@@ -404,14 +502,24 @@ export default function ProductsPage() {
                 <div className="space-y-5 fade-in">
                     {/* Header */}
                     <div className="flex flex-wrap gap-3 items-center justify-between">
-                        <div className="relative">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
-                            <input
-                                value={search}
-                                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                                placeholder="Search products…"
-                                className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
-                            />
+                        <div className="flex flex-wrap gap-2 items-center">
+                            <div className="relative">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
+                                <input
+                                    value={search}
+                                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                                    placeholder="Search products…"
+                                    className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
+                                />
+                            </div>
+                            <select
+                                value={categoryId}
+                                onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}
+                                className="px-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all"
+                            >
+                                <option value="">All categories</option>
+                                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
                         </div>
                         <button onClick={openCreate}
                             className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors">
@@ -424,6 +532,12 @@ export default function ProductsPage() {
                         {loading ? (
                             <div className="p-6 space-y-3">
                                 {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+                            </div>
+                        ) : productsError ? (
+                            <div className="py-16 text-center">
+                                <p className="text-red-600 text-sm mb-2">{productsError}</p>
+                                <p className="text-[#6e6e73] text-xs mb-3">Check that the API is reachable at the configured base URL.</p>
+                                <button type="button" onClick={() => fetchProducts()} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Retry</button>
                             </div>
                         ) : products.length === 0 ? (
                             <div className="py-16 text-center text-[#6e6e73] text-sm">No products found</div>
@@ -511,6 +625,14 @@ export default function ProductsPage() {
                 {modal && (
                     <Modal title={modal === "create" ? "Add New Product" : "Edit Product"} onClose={() => setModal(null)}>
                         <form onSubmit={handleSave} className="space-y-4">
+                            {formError && (
+                                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-2">
+                                    <span>{formError}</span>
+                                    <button type="button" onClick={() => setFormError(null)} className="text-red-500 hover:text-red-700 p-1">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Product Name *</label>
@@ -525,16 +647,88 @@ export default function ProductsPage() {
                                     <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Category</label>
-                                    <select className={INPUT} value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Category *</label>
+                                    <select className={INPUT} value={form.categoryId} onChange={(e) => { setForm({ ...form, categoryId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.categoryId}>
                                         <option value="">Select category</option>
                                         {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                                     </select>
+                                    {!categories.length && (
+                                        <p className="text-xs text-amber-600 mt-1">No categories loaded. Create a category first or refresh the page.</p>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Tags (comma-separated)</label>
                                     <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="iphone, case, magsafe" />
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Brand *</label>
+                                    <select className={INPUT} required value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.brandId}>
+                                        <option value="">Select brand</option>
+                                        {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                    </select>
+                                    {!brands.length && (
+                                        <p className="text-xs text-amber-600 mt-1">No brands loaded. Add a brand first or refresh the page.</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Product options: Featured, Limited, Offer, Bundle */}
+                            <div className="border border-black/10 rounded-xl p-4 bg-[#f5f5f7]/50 space-y-4">
+                                <h3 className="text-sm font-semibold text-[#1d1d1f] flex items-center gap-2">
+                                    <Tag size={16} /> Product options
+                                </h3>
+                                <div className="flex flex-wrap gap-6">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Featured</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Limited</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Offer</span>
+                                    </label>
+                                    {form.offer && (
+                                        <div className="flex items-center gap-2">
+                                            <label className="text-sm text-[#6e6e73]">Discount (%)</label>
+                                            <input type="number" min="0" max="100" className={`${INPUT} w-24`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="20" />
+                                        </div>
+                                    )}
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-black/20" />
+                                        <span className="text-sm font-medium text-[#1d1d1f]">Bundle</span>
+                                    </label>
+                                </div>
+                                {form.isBundle && (
+                                    <div className="pt-2 border-t border-black/10">
+                                        <p className="text-xs text-[#6e6e73] mb-2">Select products to include in this bundle (2 or more):</p>
+                                        <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
+                                            {bundleProductList.filter((prod) => prod.id !== editTarget?.id).map((prod) => {
+                                                const id = prod.id;
+                                                const checked = (form.bundleProductIds || []).includes(id);
+                                                return (
+                                                    <label key={id} className="flex items-center gap-2 cursor-pointer hover:bg-white/60 rounded-lg px-2 py-1.5">
+                                                        <input type="checkbox" checked={checked} onChange={(e) => {
+                                                            const ids = form.bundleProductIds || [];
+                                                            setForm({ ...form, bundleProductIds: e.target.checked ? [...ids, id] : ids.filter((i) => i !== id) });
+                                                        }} className="rounded border-black/20" />
+                                                        <Package size={14} className="text-[#6e6e73] shrink-0" />
+                                                        <span className="text-sm text-[#1d1d1f] truncate">{prod.name}</span>
+                                                        <span className="text-xs text-[#6e6e73] shrink-0">₹{prod.price}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        {(!form.bundleProductIds || form.bundleProductIds.length === 0) && (
+                                            <p className="text-xs text-amber-600 mt-1">Select at least one product for the bundle.</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="col-span-2">
                                     <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Description</label>
                                     <textarea className={INPUT} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description…" />
@@ -558,12 +752,39 @@ export default function ProductsPage() {
                             />
 
                             {/* 3D Models ↓ */}
-                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30">
+                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30 space-y-3">
                                 <Model3DUploader
                                     label="3D Models"
                                     initialModels={form.models3d || []}
                                     onUploaded={(models) => setForm({ ...form, models3d: models })}
                                 />
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={!!form.model3dView360}
+                                        onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
+                                        className="rounded border-black/20"
+                                    />
+                                    <span className="text-sm font-medium text-[#1d1d1f]">360° view</span>
+                                </label>
+                                <p className="text-xs text-[#6e6e73]">
+                                    When on: frontend shows 3D in 360° mode (user drags to orbit). When off: model auto-rotates.
+                                </p>
+                                {form.models3d && form.models3d.length > 0 && (() => {
+                                    const firstUrl = typeof form.models3d[0] === "string" ? form.models3d[0] : form.models3d[0]?.url;
+                                    if (!firstUrl) return null;
+                                    return (
+                                        <div className="pt-2">
+                                            <p className="text-xs font-medium text-[#6e6e73] mb-2">Preview (first model)</p>
+                                            <Product3DViewer
+                                                glbUrl={firstUrl}
+                                                view360={!!form.model3dView360}
+                                                width={280}
+                                                height={200}
+                                            />
+                                        </div>
+                                    );
+                                })()}
                             </div>
 
                             {/* Variants */}
@@ -571,7 +792,7 @@ export default function ProductsPage() {
                                 <div className="flex items-center justify-between mb-2">
                                     <label className="text-sm font-medium text-[#1d1d1f]">Variants</label>
                                     <button type="button"
-                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0 }] })}
+                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0, models3d: [] }] })}
                                         className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#f5f5f7] hover:bg-black/10 transition-colors">
                                         + Add Variant
                                     </button>
@@ -602,6 +823,11 @@ export default function ProductsPage() {
                                             multiple
                                             initialUrls={v.images || []}
                                             onUploaded={(urls) => updateVariant(i, "images", urls)}
+                                        />
+                                        <Model3DUploader
+                                            label="Variant 3D (GLB)"
+                                            initialModels={v.models3d || []}
+                                            onUploaded={(models) => updateVariant(i, "models3d", models)}
                                         />
                                     </div>
                                 ))}
