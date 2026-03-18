@@ -39,11 +39,14 @@ export default function JournalPage() {
         e.preventDefault();
         setSaving(true);
         try {
-            if (editId) await updateBlogPost(editId, form);
-            else await createBlogPost(form);
+            if (editId != null && editId !== "") {
+                await updateBlogPost(String(editId), form);
+            } else {
+                await createBlogPost(form);
+            }
             closeModal();
             fetchData();
-        } catch (e) { alert(e.message); }
+        } catch (e) { alert(e?.message || "Failed to save"); }
         finally { setSaving(false); }
     };
 
