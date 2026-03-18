@@ -21,12 +21,15 @@ import {
     Upload,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Image as ImageIcon,
     Box,
     FileText,
     CheckCircle2,
     Tag,
     Package,
+    Truck,
+    Layers,
 } from "lucide-react";
 import Head from "next/head";
 
@@ -54,6 +57,26 @@ const MODEL_FORMATS = [
 // show nothing if extension-only values like ".glb" are used.
 const MODEL_EXTENSIONS = new Set(MODEL_FORMATS.map((f) => f.ext));
 
+// Normalize product from API (backend may use ProductVariants, discountPercent, nested category)
+function normalizeProductFromApi(p) {
+    if (!p) return p;
+    const variants = p.ProductVariants ?? p.variants;
+    const discount = p.discountPercent ?? p.discount;
+    return { ...p, variants: Array.isArray(variants) ? variants : p.variants, discount: discount ?? p.discount };
+}
+
+// Category path string from nested category (e.g. Cases → apple → 17 pro)
+function categoryPath(cat) {
+    if (!cat || !cat.name) return "";
+    const parts = [cat.name];
+    let parent = cat.parent;
+    while (parent && parent.name) {
+        parts.unshift(parent.name);
+        parent = parent.parent;
+    }
+    return parts.join(" → ");
+}
+
 
 function getExt(url = "") {
     const name = url.split("?")[0].split("/").pop() || "";
@@ -79,13 +102,16 @@ function ModelBadge({ ext }) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, icon }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] sticky top-0 bg-white z-10 rounded-t-xl">
-                    <h2 className="text-sm font-semibold text-[#1d1d1f]">{title}</h2>
-                    <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5"><X size={16} /></button>
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1d1d1f]">
+                        {icon && <span className="text-[#6e6e73]">{icon}</span>}
+                        {title}
+                    </h2>
+                    <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 text-[#6e6e73] hover:text-[#1d1d1f]"><X size={16} /></button>
                 </div>
                 <div className="p-4">{children}</div>
             </div>
@@ -303,6 +329,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
 // ─── Shared input style ───────────────────────────────────────────────────────
 const INPUT =
     "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
+const SELECT_CLASS = INPUT + " pr-10 appearance-none cursor-pointer bg-no-repeat bg-right";
 
 const emptyProduct = {
     name: "",
@@ -444,51 +471,61 @@ export default function ProductsPage() {
     };
     const openEdit = (p) => {
         setFormError(null);
-        setEditTarget(p);
-        const catId = p.categoryId != null && p.categoryId !== "" ? Number(p.categoryId) : null;
-        const cat = catId ? categories.find((c) => Number(c.id) === catId) : null;
+        const product = normalizeProductFromApi(p);
+        setEditTarget(product);
+        const catId = product.categoryId != null && product.categoryId !== "" ? Number(product.categoryId) : null;
         let root = null, brand = null;
-        if (cat) {
-            const parent = cat.parentId != null && cat.parentId !== "" ? categories.find((c) => Number(c.id) === Number(cat.parentId)) : null;
-            if (!parent) {
-                root = cat;
-            } else if (!parent.parentId || parent.parentId === "") {
-                brand = cat;
-                root = parent;
-            } else {
-                brand = parent;
-                root = categories.find((c) => Number(c.id) === Number(parent.parentId)) || null;
+        if (product.category?.parent?.parent) {
+            root = product.category.parent.parent;
+            brand = product.category.parent;
+        } else if (product.category?.parent) {
+            brand = product.category.parent;
+            root = product.category.parent.parent || categories.find((c) => Number(c.id) === Number(brand?.parentId || brand?.parent?.id));
+        }
+        if (!root || !brand) {
+            const cat = catId ? categories.find((c) => Number(c.id) === catId) : null;
+            if (cat) {
+                const parent = cat.parentId != null && cat.parentId !== "" ? categories.find((c) => Number(c.id) === Number(cat.parentId)) : null;
+                if (!parent) root = cat;
+                else if (!parent.parentId || parent.parentId === "") {
+                    brand = cat;
+                    root = parent;
+                } else {
+                    brand = parent;
+                    root = categories.find((c) => Number(c.id) === Number(parent.parentId)) || null;
+                }
             }
         }
+        const variantsRaw = product.variants || product.ProductVariants || [{ color: "", images: [], stock: 0 }];
         setForm({
-            name: p.name || "",
-            description: p.description || "",
-            price: p.price || "",
-            slashedPrice: p.slashedPrice || "",
-            categoryId: p.categoryId || "",
+            name: product.name || "",
+            description: product.description || "",
+            price: product.price ?? "",
+            slashedPrice: product.slashedPrice ?? "",
+            categoryId: product.categoryId ?? "",
             selectedRootId: root ? String(root.id) : "",
             selectedBrandId: brand ? String(brand.id) : "",
-            brandId: p.brandId || (brand ? String(brand.id) : "") || "",
-            shippingInfo: p.shippingInfo || "",
-            returnInfo: p.returnInfo || "",
-            tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
-            images: p.images || [],
-            gallery: Array.isArray(p.gallery) ? p.gallery : (p.gallery ? [p.gallery] : []).map((g) => (typeof g === "string" ? { url: g, type: "image" } : g)),
-            models3d: p.models3d || [],
-            model3dView360: !!p.model3dView360,
-            variants: (p.variants || [{ color: "", images: [], stock: 0 }]).map((v) => ({
+            brandId: product.brandId != null && product.brandId !== "" ? String(product.brandId) : (brand ? String(brand.id) : ""),
+            shippingInfo: product.shippingInfo || "",
+            returnInfo: product.returnInfo || "",
+            tags: Array.isArray(product.tags) ? product.tags.join(", ") : (product.tags || ""),
+            images: product.images || [],
+            gallery: Array.isArray(product.gallery) ? product.gallery : (product.gallery ? [product.gallery] : []).map((g) => (typeof g === "string" ? { url: g, type: "image" } : g)),
+            models3d: product.models3d || [],
+            model3dView360: !!product.model3dView360,
+            variants: (Array.isArray(variantsRaw) ? variantsRaw : []).map((v) => ({
                 id: v.id ?? null,
                 color: v.color || "",
                 images: v.images || [],
                 stock: v.stock ?? 0,
                 models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
             })),
-            featured: !!p.featured,
-            limited: !!p.limited,
-            offer: !!p.offer,
-            discount: p.discount != null ? String(p.discount) : "",
-            isBundle: !!p.isBundle,
-            bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
+            featured: !!product.featured,
+            limited: !!product.limited,
+            offer: !!product.offer,
+            discount: (product.discountPercent ?? product.discount) != null ? String(product.discountPercent ?? product.discount) : "",
+            isBundle: !!product.isBundle,
+            bundleProductIds: Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []),
         });
         setModal("edit");
         getProducts({ limit: 200 }).then((data) => {
@@ -555,6 +592,7 @@ export default function ProductsPage() {
                 limited: !!form.limited,
                 offer: !!form.offer,
                 discount: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
+                discountPercent: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
                 isBundle: !!form.isBundle,
                 bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
             };
@@ -594,101 +632,97 @@ export default function ProductsPage() {
         <>
             <Head><title>Products — Hustle Admin</title></Head>
             <Layout>
-                <div className="space-y-5 fade-in">
-                    {/* Header */}
+                <div className="space-y-4 fade-in">
                     <div className="flex flex-wrap gap-3 items-center justify-between">
+                        <h1 className="text-lg font-semibold text-[#1d1d1f]">Products</h1>
                         <div className="flex flex-wrap gap-2 items-center">
                             <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
-                                <input
-                                    value={search}
-                                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                                    placeholder="Search products…"
-                                    className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
-                                />
+                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
+                                <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search" className="pl-8 pr-3 py-2 rounded-lg border border-black/10 bg-white text-sm w-44 focus:outline-none focus:ring-1 focus:ring-[#1d1d1f]" />
                             </div>
-                            <select
-                                value={categoryId}
-                                onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}
-                                className="px-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all"
-                            >
+                            <select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-black/10 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#1d1d1f]">
                                 <option value="">All categories</option>
                                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
+                            <button onClick={openCreate} className="flex items-center gap-2 bg-[#1d1d1f] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-black">
+                                <Plus size={14} /> Add product
+                            </button>
                         </div>
-                        <button onClick={openCreate}
-                            className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors">
-                            <Plus size={16} /> Add Product
-                        </button>
                     </div>
 
-                    {/* Table */}
-                    <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-xl border border-black/[0.06] overflow-hidden">
                         {loading ? (
-                            <div className="p-6 space-y-3">
-                                {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+                            <div className="p-5 space-y-2">
+                                {[...Array(6)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-black/5 animate-pulse" />)}
                             </div>
                         ) : productsError ? (
-                            <div className="py-16 text-center">
-                                <p className="text-red-600 text-sm mb-2">{productsError}</p>
-                                <p className="text-[#6e6e73] text-xs mb-3">Check that the API is reachable at the configured base URL.</p>
+                            <div className="py-12 text-center">
+                                <p className="text-red-600 text-sm mb-1">{productsError}</p>
                                 <button type="button" onClick={() => fetchProducts()} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Retry</button>
                             </div>
                         ) : products.length === 0 ? (
-                            <div className="py-16 text-center text-[#6e6e73] text-sm">No products found</div>
+                            <div className="py-12 text-center text-[#6e6e73] text-sm">No products found</div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-black/5 bg-[#f5f5f7]/50">
-                                            {["IMAGE", "NAME", "PRICE", "CATEGORY", "3D", "ACTIONS"].map((h) => (
-                                                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-[#6e6e73]">{h}</th>
+                                        <tr className="border-b border-black/[0.08] bg-black/[0.02]">
+                                            {["Image", "Product", "Price", "Category", "3D", "Variants", "Actions"].map((h) => (
+                                                <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73]">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {products.map((p) => {
-                                            // normalise models: server may return string[] or {url,ext}[]
-                                            const rawModels = p.models3d || [];
+                                            const row = normalizeProductFromApi(p);
+                                            const rawModels = row.models3d || [];
                                             const modelCount = rawModels.length;
                                             const firstExt = modelCount
                                                 ? (typeof rawModels[0] === "string" ? getExt(rawModels[0]) : rawModels[0].ext || getExt(rawModels[0].url))
                                                 : null;
+                                            const path = categoryPath(row.category) || row.category?.name || "—";
+                                            const brandName = row.brand?.name || row.category?.parent?.name;
+                                            const variantCount = (row.ProductVariants ?? row.variants)?.length ?? 0;
 
                                             return (
-                                                <tr key={p.id} className="border-b border-black/5 hover:bg-[#f5f5f7]/50 transition-colors">
-                                                    <td className="px-5 py-3">
-                                                        {p.images?.[0] ? (
-                                                            <img src={p.images[0]} alt={p.name} className="w-10 h-10 object-cover rounded-xl" />
+                                                <tr key={row.id} className="border-b border-black/[0.06] hover:bg-black/[0.02] transition-colors">
+                                                    <td className="px-4 py-2.5">
+                                                        {row.images?.[0] ? (
+                                                            <img src={row.images[0]} alt={row.name} className="w-11 h-11 object-cover rounded-lg" />
                                                         ) : (
-                                                            <div className="w-10 h-10 rounded-xl bg-[#f5f5f7] flex items-center justify-center">
-                                                                <ImageIcon size={16} className="text-[#6e6e73]" />
+                                                            <div className="w-11 h-11 rounded-lg bg-black/[0.04] flex items-center justify-center">
+                                                                <ImageIcon size={18} className="text-[#6e6e73]" />
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td className="px-5 py-3 font-medium text-[#1d1d1f] max-w-[200px] truncate">{p.name}</td>
-                                                    <td className="px-5 py-3 font-semibold text-[#1d1d1f]">₹{p.price}</td>
-                                                    <td className="px-5 py-3 text-[#6e6e73]">{p.category?.name || "—"}</td>
-                                                    <td className="px-5 py-3">
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="min-w-0">
+                                                            <p className="font-medium text-[#1d1d1f] truncate max-w-[220px]">{row.name}</p>
+                                                            {brandName && <p className="text-xs text-[#6e6e73] truncate max-w-[220px]">{brandName}</p>}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <span className="font-semibold text-[#1d1d1f]">₹{row.price}</span>
+                                                        {(row.slashedPrice != null && row.slashedPrice > row.price) && <span className="text-xs text-[#6e6e73] line-through ml-1">₹{row.slashedPrice}</span>}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-sm text-[#6e6e73] max-w-[200px] truncate" title={path}>{path}</td>
+                                                    <td className="px-4 py-2.5">
                                                         {modelCount > 0 ? (
-                                                            <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center gap-1">
                                                                 <ModelBadge ext={firstExt} />
-                                                                {modelCount > 1 && (
-                                                                    <span className="text-[10px] text-[#6e6e73] font-semibold">+{modelCount - 1}</span>
-                                                                )}
+                                                                {modelCount > 1 && <span className="text-[10px] text-[#6e6e73]">+{modelCount - 1}</span>}
                                                             </div>
                                                         ) : (
                                                             <span className="text-[#6e6e73] text-xs">—</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-5 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
-                                                                <Pencil size={15} />
-                                                            </button>
-                                                            <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors">
-                                                                <Trash2 size={15} />
-                                                            </button>
+                                                    <td className="px-4 py-2.5">
+                                                        {variantCount > 0 && <span className="text-xs text-[#6e6e73]">{variantCount} variant{variantCount !== 1 ? "s" : ""}</span>}
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73] hover:text-[#1d1d1f]" title="Edit"><Pencil size={14} /></button>
+                                                            <button onClick={() => handleDelete(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -700,17 +734,14 @@ export default function ProductsPage() {
                         )}
                     </div>
 
-                    {/* Pagination */}
                     {totalPages > 1 && (
-                        <div className="flex items-center justify-center gap-3">
-                            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all">
-                                <ChevronLeft size={16} />
+                        <div className="flex items-center justify-center gap-2 py-3 border-t border-black/[0.06]">
+                            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-lg border border-black/10 hover:bg-black/5 disabled:opacity-40">
+                                <ChevronLeft size={14} />
                             </button>
-                            <span className="text-sm text-[#6e6e73]">Page {page} of {totalPages}</span>
-                            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all">
-                                <ChevronRight size={16} />
+                            <span className="text-xs text-[#6e6e73]">Page {page} of {totalPages}</span>
+                            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-lg border border-black/10 hover:bg-black/5 disabled:opacity-40">
+                                <ChevronRight size={14} />
                             </button>
                         </div>
                     )}
@@ -718,7 +749,7 @@ export default function ProductsPage() {
 
                 {/* Create / Edit Modal */}
                 {modal && (
-                    <Modal title={modal === "create" ? "Add New Product" : "Edit Product"} onClose={() => { setModal(null); setEditTarget(null); }}>
+                    <Modal title={modal === "create" ? "Add product" : "Edit product"} onClose={() => { setModal(null); setEditTarget(null); }} icon={<Package size={18} />}>
                         <form onSubmit={handleSave} className="space-y-4">
                             {formError && (
                                 <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center justify-between">
@@ -727,41 +758,50 @@ export default function ProductsPage() {
                                 </div>
                             )}
                             {/* Basics */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Name</label>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">
+                                        <Package size={14} className="text-[#1d1d1f]" /> Name
+                                    </label>
                                     <input className={INPUT} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Product name" />
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Price (₹)</label>
-                                    <input className={INPUT} type="number" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="999" />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Price (₹)</label>
+                                        <input className={INPUT} type="number" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="999" />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Compare at (₹)</label>
+                                        <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
+                                    </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Compare at (₹)</label>
-                                    <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Category (model)</label>
-                                    <select
-                                        className={INPUT}
-                                        value={form.categoryId}
-                                        onChange={(e) => {
-                                            const v = e.target.value;
-                                            const chosen = allModelsWithPath.find((m) => String(m.id) === String(v));
-                                            if (chosen) {
-                                                setForm({ ...form, categoryId: v, selectedRootId: String(chosen.rootId), selectedBrandId: String(chosen.brandId), brandId: String(chosen.brandId) });
-                                            } else {
-                                                setForm({ ...form, categoryId: v, selectedRootId: v ? form.selectedRootId : "", selectedBrandId: v ? form.selectedBrandId : "", brandId: v ? form.brandId : "" });
-                                            }
-                                            setFormError(null);
-                                        }}
-                                        aria-invalid={!!formError && !form.categoryId}
-                                    >
-                                        <option value="">Select model</option>
-                                        {allModelsWithPath.map((m) => (
-                                            <option key={m.id} value={m.id}>{m.label}</option>
-                                        ))}
-                                    </select>
+                                    <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">
+                                        <Tag size={14} className="text-[#1d1d1f]" /> Category (model)
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            className={SELECT_CLASS}
+                                            value={form.categoryId}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                const chosen = allModelsWithPath.find((m) => String(m.id) === String(v));
+                                                if (chosen) {
+                                                    setForm({ ...form, categoryId: v, selectedRootId: String(chosen.rootId), selectedBrandId: String(chosen.brandId), brandId: String(chosen.brandId) });
+                                                } else {
+                                                    setForm({ ...form, categoryId: v, selectedRootId: v ? form.selectedRootId : "", selectedBrandId: v ? form.selectedBrandId : "", brandId: v ? form.brandId : "" });
+                                                }
+                                                setFormError(null);
+                                            }}
+                                            aria-invalid={!!formError && !form.categoryId}
+                                        >
+                                            <option value="">Select model</option>
+                                            {allModelsWithPath.map((m) => (
+                                                <option key={m.id} value={m.id}>{m.label}</option>
+                                            ))}
+                                        </select>
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
+                                    </div>
                                     {form.categoryId && (() => {
                                         const chosen = allModelsWithPath.find((m) => String(m.id) === String(form.categoryId));
                                         if (!chosen?.model3d) return null;
@@ -777,29 +817,34 @@ export default function ProductsPage() {
                                         );
                                     })()}
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Tags</label>
-                                    <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Brand</label>
-                                    <select className={INPUT} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }}>
-                                        <option value="">—</option>
-                                        {brandOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                    </select>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5"><Tag size={14} /> Tags</label>
+                                        <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Brand</label>
+                                        <div className="relative">
+                                            <select className={SELECT_CLASS} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }}>
+                                                <option value="">— Select brand —</option>
+                                                {brandOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                            </select>
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Options: Featured, Limited, Offer, Bundle — compact row */}
-                            <div className="flex flex-wrap items-center gap-4 py-2 border-t border-black/[0.06]">
-                                <span className="text-xs font-medium text-[#6e6e73]">Options</span>
-                                <label className="flex items-center gap-1.5 cursor-pointer text-sm"><input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded" /><span>Featured</span></label>
-                                <label className="flex items-center gap-1.5 cursor-pointer text-sm"><input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded" /><span>Limited</span></label>
-                                <label className="flex items-center gap-1.5 cursor-pointer text-sm"><input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded" /><span>Offer</span></label>
+                            {/* Options */}
+                            <div className="flex flex-wrap items-center gap-4 py-3 border-t border-black/[0.08]">
+                                <span className="flex items-center gap-2 text-xs font-medium text-[#6e6e73]"><CheckCircle2 size={14} /> Options</span>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Featured</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Limited</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-[#6e6e73]" /><span>Offer</span></label>
                                 {form.offer && <input type="number" min="0" max="100" className={`${INPUT} w-14 py-1.5 text-xs`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="%" />}
-                                <label className="flex items-center gap-1.5 cursor-pointer text-sm"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded" /><span>Bundle</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
                                 {form.isBundle && (
-                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1">
+                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5">
                                         {bundleProductList.filter((p) => p.id !== editTarget?.id).map((prod) => {
                                             const checked = (form.bundleProductIds || []).includes(prod.id);
                                             return (
@@ -814,27 +859,48 @@ export default function ProductsPage() {
                                 )}
                             </div>
 
-                            <details className="group">
-                                <summary className="cursor-pointer text-sm font-medium text-[#1d1d1f] py-1.5 list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">Description & shipping</summary>
-                                <div className="pl-0 pt-2 space-y-3">
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <FileText size={16} className="text-[#6e6e73]" />
+                                        Description & shipping
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
                                     <div><label className="block text-xs text-[#6e6e73] mb-1">Description</label><textarea className={INPUT} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description" /></div>
                                     <div className="grid grid-cols-2 gap-3">
-                                        <div><label className="block text-xs text-[#6e6e73] mb-1">Shipping</label><input className={INPUT} value={form.shippingInfo} onChange={(e) => setForm({ ...form, shippingInfo: e.target.value })} placeholder="e.g. 3–5 days" /></div>
+                                        <div><label className="flex items-center gap-1.5 text-xs text-[#6e6e73] mb-1"><Truck size={12} /> Shipping</label><input className={INPUT} value={form.shippingInfo} onChange={(e) => setForm({ ...form, shippingInfo: e.target.value })} placeholder="e.g. 3–5 days" /></div>
                                         <div><label className="block text-xs text-[#6e6e73] mb-1">Returns</label><input className={INPUT} value={form.returnInfo} onChange={(e) => setForm({ ...form, returnInfo: e.target.value })} placeholder="e.g. 7 days" /></div>
                                     </div>
                                 </div>
                             </details>
 
-                            <details className="group" open>
-                                <summary className="cursor-pointer text-sm font-medium text-[#1d1d1f] py-1.5 list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">Media (images, gallery, 3D)</summary>
-                                <div className="pl-0 pt-2 space-y-3">
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden" open>
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <ImageIcon size={16} className="text-[#6e6e73]" />
+                                        Media (images, gallery, 3D)
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
                                     <ImageUploader label="Images" multiple initialUrls={form.images || []} onUploaded={(urls) => setForm({ ...form, images: urls })} />
                                     <div>
                                         <div className="flex items-center justify-between mb-1"><span className="text-xs font-medium text-[#6e6e73]">Gallery (max 6)</span>{(form.gallery || []).length < 6 && <button type="button" onClick={() => setForm({ ...form, gallery: [...(form.gallery || []), { url: "", type: "image" }] })} className="text-xs font-medium text-[#1d1d1f] hover:underline">+ Add</button>}</div>
                                         <div className="space-y-1.5">
                                             {(form.gallery || []).map((item, i) => (
                                                 <div key={i} className="flex items-center gap-2">
-                                                    <select className={`${INPUT} w-20 py-1.5 text-xs`} value={item.type || "image"} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], type: e.target.value }; setForm({ ...form, gallery: g }); }}><option value="image">Image</option><option value="video">Video</option></select>
+                                                    <div className="relative w-24">
+                                                        <select className={`${INPUT} w-full py-1.5 text-xs pr-8 appearance-none`} value={item.type || "image"} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], type: e.target.value }; setForm({ ...form, gallery: g }); }}><option value="image">Image</option><option value="video">Video</option></select>
+                                                        <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]" />
+                                                    </div>
                                                     <input className={`${INPUT} flex-1 py-1.5 text-xs`} placeholder="URL" value={item.url || ""} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], url: e.target.value }; setForm({ ...form, gallery: g }); }} />
                                                     <button type="button" onClick={() => setForm({ ...form, gallery: (form.gallery || []).filter((_, j) => j !== i) })} className="p-1.5 rounded hover:bg-red-50 text-red-500"><X size={12} /></button>
                                                 </div>
@@ -849,10 +915,19 @@ export default function ProductsPage() {
                                 </div>
                             </details>
 
-                            <details className="group">
-                                <summary className="cursor-pointer text-sm font-medium text-[#1d1d1f] py-1.5 list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden">Variants</summary>
-                                <div className="pl-0 pt-2 space-y-2">
-                                    <div className="flex justify-end"><button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, { id: null, color: "", images: [], stock: 0, models3d: [] }] })} className="text-xs font-medium px-2 py-1 rounded bg-black/5 hover:bg-black/10">+ Variant</button></div>
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <Layers size={16} className="text-[#6e6e73]" />
+                                        Variants
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-2 border-t border-black/[0.06]">
+                                    <div className="flex justify-end"><button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, { id: null, color: "", images: [], stock: 0, models3d: [] }] })} className="text-xs font-medium px-2 py-1.5 rounded-lg bg-black/5 hover:bg-black/10 flex items-center gap-1"><Plus size={12} /> Variant</button></div>
                                     {form.variants.map((v, i) => (
                                         <div key={i} className="rounded-lg border border-black/[0.06] p-3 space-y-2">
                                             <div className="flex items-center justify-between">
