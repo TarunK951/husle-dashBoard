@@ -21,12 +21,15 @@ import {
     Upload,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Image as ImageIcon,
     Box,
     FileText,
     CheckCircle2,
     Tag,
     Package,
+    Truck,
+    Layers,
 } from "lucide-react";
 import Head from "next/head";
 
@@ -54,6 +57,26 @@ const MODEL_FORMATS = [
 // show nothing if extension-only values like ".glb" are used.
 const MODEL_EXTENSIONS = new Set(MODEL_FORMATS.map((f) => f.ext));
 
+// Normalize product from API (backend may use ProductVariants, discountPercent, nested category)
+function normalizeProductFromApi(p) {
+    if (!p) return p;
+    const variants = p.ProductVariants ?? p.variants;
+    const discount = p.discountPercent ?? p.discount;
+    return { ...p, variants: Array.isArray(variants) ? variants : p.variants, discount: discount ?? p.discount };
+}
+
+// Category path string from nested category (e.g. Cases → apple → 17 pro)
+function categoryPath(cat) {
+    if (!cat || !cat.name) return "";
+    const parts = [cat.name];
+    let parent = cat.parent;
+    while (parent && parent.name) {
+        parts.unshift(parent.name);
+        parent = parent.parent;
+    }
+    return parts.join(" → ");
+}
+
 
 function getExt(url = "") {
     const name = url.split("?")[0].split("/").pop() || "";
@@ -79,17 +102,18 @@ function ModelBadge({ ext }) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-function Modal({ title, onClose, children }) {
+function Modal({ title, onClose, children, icon }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 sticky top-0 bg-white z-10 rounded-t-2xl">
-                    <h2 className="font-bold text-[#1d1d1f]">{title}</h2>
-                    <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
-                        <X size={18} />
-                    </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] sticky top-0 bg-white z-10 rounded-t-xl">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1d1d1f]">
+                        {icon && <span className="text-[#6e6e73]">{icon}</span>}
+                        {title}
+                    </h2>
+                    <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 text-[#6e6e73] hover:text-[#1d1d1f]"><X size={16} /></button>
                 </div>
-                <div className="p-6">{children}</div>
+                <div className="p-4">{children}</div>
             </div>
         </div>
     );
@@ -305,6 +329,7 @@ function Model3DUploader({ label = "3D Models", onUploaded, initialModels = [] }
 // ─── Shared input style ───────────────────────────────────────────────────────
 const INPUT =
     "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
+const SELECT_CLASS = INPUT + " pr-10 appearance-none cursor-pointer bg-no-repeat bg-right";
 
 const emptyProduct = {
     name: "",
@@ -312,14 +337,17 @@ const emptyProduct = {
     price: "",
     slashedPrice: "",
     categoryId: "",
+    selectedRootId: "",
+    selectedBrandId: "",
     brandId: "",
     shippingInfo: "",
     returnInfo: "",
     tags: "",
     images: [],
+    gallery: [],
     models3d: [],
     model3dView360: false,
-    variants: [{ color: "", images: [], stock: 0, models3d: [] }],
+    variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
     featured: false,
     limited: false,
     offer: false,
@@ -375,25 +403,60 @@ export default function ProductsPage() {
             .catch(() => setBrands([]));
     }, []);
 
-    // Brand dropdown: API brands + categories under the "brand" Sort by group (Categories page)
+    // E-commerce hierarchy: root = Category, child of root = Brand, child of brand = Model
+    const rootCategories = useMemo(() => categories.filter((c) => !c.parentId || c.parentId === ""), [categories]);
+    const getChildren = (parentId) => categories.filter((c) => Number(c.parentId) === Number(parentId));
+    const brandCategories = useMemo(() => rootCategories.flatMap((r) => getChildren(r.id)), [categories, rootCategories]);
+
+    // Cascading selection: selected root → brands under it; selected brand → models under it
+    const brandsForSelectedRoot = useMemo(() => (form.selectedRootId ? getChildren(form.selectedRootId) : []), [categories, form.selectedRootId]);
+    const modelsForSelectedBrand = useMemo(() => (form.selectedBrandId ? getChildren(form.selectedBrandId) : []), [categories, form.selectedBrandId]);
+
+    // Flat list of all models (and brands with no models) for "Assign to model" dropdown
+    const allModelsWithPath = useMemo(() => {
+        const list = [];
+        rootCategories.forEach((root) => {
+            getChildren(root.id).forEach((brand) => {
+                const models = getChildren(brand.id);
+                if (models.length === 0) {
+                    list.push({
+                        id: brand.id,
+                        name: brand.name,
+                        label: `${root.name} → ${brand.name} (brand only, no models yet)`,
+                        rootId: root.id,
+                        brandId: brand.id,
+                        model3d: undefined,
+                    });
+                } else {
+                    models.forEach((model) => {
+                        list.push({
+                            id: model.id,
+                            name: model.name,
+                            label: `${root.name} → ${brand.name} → ${model.name}`,
+                            rootId: root.id,
+                            brandId: brand.id,
+                            model3d: model.model3d || undefined,
+                        });
+                    });
+                }
+            });
+        });
+        return list;
+    }, [categories, rootCategories]);
+
+    // Brand dropdown: API brands + e-commerce brand-level categories
     const brandOptions = useMemo(() => {
         const apiList = Array.isArray(brands) ? brands : [];
-        const catList = Array.isArray(categories) ? categories : [];
-        const brandGroup = catList.find(
-            (c) => (c.parentId == null || c.parentId === "") && String(c.name || "").toLowerCase().trim() === "brand"
-        );
-        if (!brandGroup) return apiList;
         const seen = new Set(apiList.map((b) => b.id));
-        const fromGroup = catList.filter((c) => Number(c.parentId) === Number(brandGroup.id));
         const merged = [...apiList];
-        fromGroup.forEach((c) => {
+        brandCategories.forEach((c) => {
             if (!seen.has(c.id)) {
                 seen.add(c.id);
                 merged.push({ id: c.id, name: c.name || "" });
             }
         });
         return merged;
-    }, [brands, categories]);
+    }, [brands, brandCategories]);
 
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
@@ -408,30 +471,61 @@ export default function ProductsPage() {
     };
     const openEdit = (p) => {
         setFormError(null);
-        setEditTarget(p);
+        const product = normalizeProductFromApi(p);
+        setEditTarget(product);
+        const catId = product.categoryId != null && product.categoryId !== "" ? Number(product.categoryId) : null;
+        let root = null, brand = null;
+        if (product.category?.parent?.parent) {
+            root = product.category.parent.parent;
+            brand = product.category.parent;
+        } else if (product.category?.parent) {
+            brand = product.category.parent;
+            root = product.category.parent.parent || categories.find((c) => Number(c.id) === Number(brand?.parentId || brand?.parent?.id));
+        }
+        if (!root || !brand) {
+            const cat = catId ? categories.find((c) => Number(c.id) === catId) : null;
+            if (cat) {
+                const parent = cat.parentId != null && cat.parentId !== "" ? categories.find((c) => Number(c.id) === Number(cat.parentId)) : null;
+                if (!parent) root = cat;
+                else if (!parent.parentId || parent.parentId === "") {
+                    brand = cat;
+                    root = parent;
+                } else {
+                    brand = parent;
+                    root = categories.find((c) => Number(c.id) === Number(parent.parentId)) || null;
+                }
+            }
+        }
+        const variantsRaw = product.variants || product.ProductVariants || [{ color: "", images: [], stock: 0 }];
         setForm({
-            name: p.name || "",
-            description: p.description || "",
-            price: p.price || "",
-            slashedPrice: p.slashedPrice || "",
-            categoryId: p.categoryId || "",
-            brandId: p.brandId || "",
-            shippingInfo: p.shippingInfo || "",
-            returnInfo: p.returnInfo || "",
-            tags: Array.isArray(p.tags) ? p.tags.join(", ") : p.tags || "",
-            images: p.images || [],
-            models3d: p.models3d || [],
-            model3dView360: !!p.model3dView360,
-            variants: (p.variants || [{ color: "", images: [], stock: 0 }]).map((v) => ({
-                ...v,
+            name: product.name || "",
+            description: product.description || "",
+            price: product.price ?? "",
+            slashedPrice: product.slashedPrice ?? "",
+            categoryId: product.categoryId ?? "",
+            selectedRootId: root ? String(root.id) : "",
+            selectedBrandId: brand ? String(brand.id) : "",
+            brandId: product.brandId != null && product.brandId !== "" ? String(product.brandId) : (brand ? String(brand.id) : ""),
+            shippingInfo: product.shippingInfo || "",
+            returnInfo: product.returnInfo || "",
+            tags: Array.isArray(product.tags) ? product.tags.join(", ") : (product.tags || ""),
+            images: product.images || [],
+            gallery: Array.isArray(product.gallery) ? product.gallery : (product.gallery ? [product.gallery] : []).map((g) => (typeof g === "string" ? { url: g, type: "image" } : g)),
+            models3d: product.models3d || [],
+            model3dView360: !!product.model3dView360,
+            variants: (Array.isArray(variantsRaw) ? variantsRaw : []).map((v) => ({
+                id: v.id ?? null,
+                color: v.color || "",
+                images: v.images || [],
+                stock: v.stock ?? 0,
                 models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
             })),
-            featured: !!p.featured,
-            limited: !!p.limited,
-            offer: !!p.offer,
-            discount: p.discount != null ? String(p.discount) : "",
-            isBundle: !!p.isBundle,
-            bundleProductIds: Array.isArray(p.bundleProductIds) ? p.bundleProductIds : (p.bundleProductIds ? [p.bundleProductIds] : []),
+            featured: !!product.featured,
+            limited: !!product.limited,
+            offer: !!product.offer,
+            discount: (product.discountPercent ?? product.discount) != null ? String(product.discountPercent ?? product.discount) : "",
+            isBundle: !!product.isBundle,
+            bundleProductIds: Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []),
         });
         setModal("edit");
         getProducts({ limit: 200 }).then((data) => {
@@ -446,11 +540,11 @@ export default function ProductsPage() {
         const categoryIdNum = Number(form.categoryId);
         const validCategoryIds = (categories || []).map((c) => Number(c.id)).filter((id) => id > 0);
         if (!form.categoryId || categoryIdNum <= 0 || Number.isNaN(categoryIdNum)) {
-            setFormError("Please select a category. Products must be linked to an existing category.");
+            setFormError("Please select Category → Brand → Model. Products must be linked to a Model (leaf category).");
             return;
         }
         if (!validCategoryIds.includes(categoryIdNum)) {
-            setFormError("Selected category is invalid or was removed. Please choose a category from the list.");
+            setFormError("Selected model is invalid or was removed. Please choose from Category → Brand → Model.");
             return;
         }
         const brandIdNum = Number(form.brandId);
@@ -467,35 +561,49 @@ export default function ProductsPage() {
             setFormError("Bundle must include at least 2 products. Select two or more products in the Bundle section.");
             return;
         }
+        if (modal === "edit" && (!editTarget || editTarget.id == null || editTarget.id === "")) {
+            setFormError("Cannot save: missing product. Close and try editing again.");
+            return;
+        }
         setSaving(true);
         try {
             const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
+            const galleryArray = (form.gallery || []).slice(0, 6).map((g) => (typeof g === "string" ? { url: g, type: "image" } : { url: g.url || "", type: g.type || "image" })).filter((g) => g.url && g.url.trim());
             const variantsNormalized = (form.variants || []).map((v) => ({
-                ...v,
+                ...(v.id != null && v.id !== "" ? { id: v.id } : {}),
+                color: v.color || "",
+                stock: v.stock ?? 0,
                 images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
                 models3d: (v.models3d || []).map((m) => (typeof m === "string" ? m : m.url)).filter(Boolean),
             }));
             const payload = {
                 ...form,
                 images: imagesArray,
+                gallery: galleryArray,
                 variants: variantsNormalized,
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
                 ...(brandIdNum > 0 ? { brandId: brandIdNum } : {}),
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
-                models3d: form.models3d.map((m) => (typeof m === "string" ? m : m.url)),
+                models3d: (form.models3d || []).map((m) => (typeof m === "string" ? m : m.url)),
                 model3dView360: !!form.model3dView360,
                 featured: !!form.featured,
                 limited: !!form.limited,
                 offer: !!form.offer,
                 discount: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
+                discountPercent: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
                 isBundle: !!form.isBundle,
                 bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
             };
-            if (modal === "create") await createProduct(payload);
-            else await updateProduct(editTarget.id, payload);
+            if (modal === "create") {
+                await createProduct(payload);
+            } else {
+                const id = editTarget.id != null ? String(editTarget.id) : editTarget.id;
+                await updateProduct(id, payload);
+            }
             setModal(null);
+            setEditTarget(null);
             fetchProducts();
         } catch (e) {
             setFormError(e?.message || "Failed to save product.");
@@ -524,101 +632,97 @@ export default function ProductsPage() {
         <>
             <Head><title>Products — Hustle Admin</title></Head>
             <Layout>
-                <div className="space-y-5 fade-in">
-                    {/* Header */}
+                <div className="space-y-4 fade-in">
                     <div className="flex flex-wrap gap-3 items-center justify-between">
+                        <h1 className="text-lg font-semibold text-[#1d1d1f]">Products</h1>
                         <div className="flex flex-wrap gap-2 items-center">
                             <div className="relative">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
-                                <input
-                                    value={search}
-                                    onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                                    placeholder="Search products…"
-                                    className="pl-9 pr-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all w-60"
-                                />
+                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6e6e73]" />
+                                <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search" className="pl-8 pr-3 py-2 rounded-lg border border-black/10 bg-white text-sm w-44 focus:outline-none focus:ring-1 focus:ring-[#1d1d1f]" />
                             </div>
-                            <select
-                                value={categoryId}
-                                onChange={(e) => { setCategoryId(e.target.value); setPage(1); }}
-                                className="px-4 py-2.5 rounded-xl border border-black/10 bg-white text-sm text-[#1d1d1f] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all"
-                            >
+                            <select value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setPage(1); }} className="px-3 py-2 rounded-lg border border-black/10 bg-white text-sm focus:outline-none focus:ring-1 focus:ring-[#1d1d1f]">
                                 <option value="">All categories</option>
                                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
+                            <button onClick={openCreate} className="flex items-center gap-2 bg-[#1d1d1f] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-black">
+                                <Plus size={14} /> Add product
+                            </button>
                         </div>
-                        <button onClick={openCreate}
-                            className="flex items-center gap-2 bg-[#1d1d1f] text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors">
-                            <Plus size={16} /> Add Product
-                        </button>
                     </div>
 
-                    {/* Table */}
-                    <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
+                    <div className="bg-white rounded-xl border border-black/[0.06] overflow-hidden">
                         {loading ? (
-                            <div className="p-6 space-y-3">
-                                {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+                            <div className="p-5 space-y-2">
+                                {[...Array(6)].map((_, i) => <div key={i} className="h-12 rounded-lg bg-black/5 animate-pulse" />)}
                             </div>
                         ) : productsError ? (
-                            <div className="py-16 text-center">
-                                <p className="text-red-600 text-sm mb-2">{productsError}</p>
-                                <p className="text-[#6e6e73] text-xs mb-3">Check that the API is reachable at the configured base URL.</p>
+                            <div className="py-12 text-center">
+                                <p className="text-red-600 text-sm mb-1">{productsError}</p>
                                 <button type="button" onClick={() => fetchProducts()} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Retry</button>
                             </div>
                         ) : products.length === 0 ? (
-                            <div className="py-16 text-center text-[#6e6e73] text-sm">No products found</div>
+                            <div className="py-12 text-center text-[#6e6e73] text-sm">No products found</div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-black/5 bg-[#f5f5f7]/50">
-                                            {["IMAGE", "NAME", "PRICE", "CATEGORY", "3D", "ACTIONS"].map((h) => (
-                                                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-[#6e6e73]">{h}</th>
+                                        <tr className="border-b border-black/[0.08] bg-black/[0.02]">
+                                            {["Image", "Product", "Price", "Category", "3D", "Variants", "Actions"].map((h) => (
+                                                <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-[#6e6e73]">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {products.map((p) => {
-                                            // normalise models: server may return string[] or {url,ext}[]
-                                            const rawModels = p.models3d || [];
+                                            const row = normalizeProductFromApi(p);
+                                            const rawModels = row.models3d || [];
                                             const modelCount = rawModels.length;
                                             const firstExt = modelCount
                                                 ? (typeof rawModels[0] === "string" ? getExt(rawModels[0]) : rawModels[0].ext || getExt(rawModels[0].url))
                                                 : null;
+                                            const path = categoryPath(row.category) || row.category?.name || "—";
+                                            const brandName = row.brand?.name || row.category?.parent?.name;
+                                            const variantCount = (row.ProductVariants ?? row.variants)?.length ?? 0;
 
                                             return (
-                                                <tr key={p.id} className="border-b border-black/5 hover:bg-[#f5f5f7]/50 transition-colors">
-                                                    <td className="px-5 py-3">
-                                                        {p.images?.[0] ? (
-                                                            <img src={p.images[0]} alt={p.name} className="w-10 h-10 object-cover rounded-xl" />
+                                                <tr key={row.id} className="border-b border-black/[0.06] hover:bg-black/[0.02] transition-colors">
+                                                    <td className="px-4 py-2.5">
+                                                        {row.images?.[0] ? (
+                                                            <img src={row.images[0]} alt={row.name} className="w-11 h-11 object-cover rounded-lg" />
                                                         ) : (
-                                                            <div className="w-10 h-10 rounded-xl bg-[#f5f5f7] flex items-center justify-center">
-                                                                <ImageIcon size={16} className="text-[#6e6e73]" />
+                                                            <div className="w-11 h-11 rounded-lg bg-black/[0.04] flex items-center justify-center">
+                                                                <ImageIcon size={18} className="text-[#6e6e73]" />
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td className="px-5 py-3 font-medium text-[#1d1d1f] max-w-[200px] truncate">{p.name}</td>
-                                                    <td className="px-5 py-3 font-semibold text-[#1d1d1f]">₹{p.price}</td>
-                                                    <td className="px-5 py-3 text-[#6e6e73]">{p.category?.name || "—"}</td>
-                                                    <td className="px-5 py-3">
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="min-w-0">
+                                                            <p className="font-medium text-[#1d1d1f] truncate max-w-[220px]">{row.name}</p>
+                                                            {brandName && <p className="text-xs text-[#6e6e73] truncate max-w-[220px]">{brandName}</p>}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <span className="font-semibold text-[#1d1d1f]">₹{row.price}</span>
+                                                        {(row.slashedPrice != null && row.slashedPrice > row.price) && <span className="text-xs text-[#6e6e73] line-through ml-1">₹{row.slashedPrice}</span>}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-sm text-[#6e6e73] max-w-[200px] truncate" title={path}>{path}</td>
+                                                    <td className="px-4 py-2.5">
                                                         {modelCount > 0 ? (
-                                                            <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center gap-1">
                                                                 <ModelBadge ext={firstExt} />
-                                                                {modelCount > 1 && (
-                                                                    <span className="text-[10px] text-[#6e6e73] font-semibold">+{modelCount - 1}</span>
-                                                                )}
+                                                                {modelCount > 1 && <span className="text-[10px] text-[#6e6e73]">+{modelCount - 1}</span>}
                                                             </div>
                                                         ) : (
                                                             <span className="text-[#6e6e73] text-xs">—</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-5 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition-colors">
-                                                                <Pencil size={15} />
-                                                            </button>
-                                                            <button onClick={() => handleDelete(p.id)} className="p-2 rounded-lg hover:bg-red-50 text-red-500 transition-colors">
-                                                                <Trash2 size={15} />
-                                                            </button>
+                                                    <td className="px-4 py-2.5">
+                                                        {variantCount > 0 && <span className="text-xs text-[#6e6e73]">{variantCount} variant{variantCount !== 1 ? "s" : ""}</span>}
+                                                    </td>
+                                                    <td className="px-4 py-2.5">
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73] hover:text-[#1d1d1f]" title="Edit"><Pencil size={14} /></button>
+                                                            <button onClick={() => handleDelete(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -630,17 +734,14 @@ export default function ProductsPage() {
                         )}
                     </div>
 
-                    {/* Pagination */}
                     {totalPages > 1 && (
-                        <div className="flex items-center justify-center gap-3">
-                            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all">
-                                <ChevronLeft size={16} />
+                        <div className="flex items-center justify-center gap-2 py-3 border-t border-black/[0.06]">
+                            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-2 rounded-lg border border-black/10 hover:bg-black/5 disabled:opacity-40">
+                                <ChevronLeft size={14} />
                             </button>
-                            <span className="text-sm text-[#6e6e73]">Page {page} of {totalPages}</span>
-                            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all">
-                                <ChevronRight size={16} />
+                            <span className="text-xs text-[#6e6e73]">Page {page} of {totalPages}</span>
+                            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-2 rounded-lg border border-black/10 hover:bg-black/5 disabled:opacity-40">
+                                <ChevronRight size={14} />
                             </button>
                         </div>
                     )}
@@ -648,227 +749,205 @@ export default function ProductsPage() {
 
                 {/* Create / Edit Modal */}
                 {modal && (
-                    <Modal title={modal === "create" ? "Add New Product" : "Edit Product"} onClose={() => setModal(null)}>
+                    <Modal title={modal === "create" ? "Add product" : "Edit product"} onClose={() => { setModal(null); setEditTarget(null); }} icon={<Package size={18} />}>
                         <form onSubmit={handleSave} className="space-y-4">
                             {formError && (
-                                <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between gap-2">
+                                <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center justify-between">
                                     <span>{formError}</span>
-                                    <button type="button" onClick={() => setFormError(null)} className="text-red-500 hover:text-red-700 p-1">
-                                        <X size={16} />
-                                    </button>
+                                    <button type="button" onClick={() => setFormError(null)} className="p-1 text-red-500 hover:text-red-700"><X size={14} /></button>
                                 </div>
                             )}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Product Name *</label>
-                                    <input className={INPUT} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Titanium X Case" />
+                            {/* Basics */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">
+                                        <Package size={14} className="text-[#1d1d1f]" /> Name
+                                    </label>
+                                    <input className={INPUT} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Product name" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Price (₹)</label>
+                                        <input className={INPUT} type="number" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="999" />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Compare at (₹)</label>
+                                        <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
+                                    </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Price (₹) *</label>
-                                    <input className={INPUT} type="number" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="999" />
+                                    <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">
+                                        <Tag size={14} className="text-[#1d1d1f]" /> Category (model)
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            className={SELECT_CLASS}
+                                            value={form.categoryId}
+                                            onChange={(e) => {
+                                                const v = e.target.value;
+                                                const chosen = allModelsWithPath.find((m) => String(m.id) === String(v));
+                                                if (chosen) {
+                                                    setForm({ ...form, categoryId: v, selectedRootId: String(chosen.rootId), selectedBrandId: String(chosen.brandId), brandId: String(chosen.brandId) });
+                                                } else {
+                                                    setForm({ ...form, categoryId: v, selectedRootId: v ? form.selectedRootId : "", selectedBrandId: v ? form.selectedBrandId : "", brandId: v ? form.brandId : "" });
+                                                }
+                                                setFormError(null);
+                                            }}
+                                            aria-invalid={!!formError && !form.categoryId}
+                                        >
+                                            <option value="">Select model</option>
+                                            {allModelsWithPath.map((m) => (
+                                                <option key={m.id} value={m.id}>{m.label}</option>
+                                            ))}
+                                        </select>
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
+                                    </div>
+                                    {form.categoryId && (() => {
+                                        const chosen = allModelsWithPath.find((m) => String(m.id) === String(form.categoryId));
+                                        if (!chosen?.model3d) return null;
+                                        return (
+                                            <button type="button" onClick={() => {
+                                                const url = chosen.model3d;
+                                                const existing = (form.models3d || []).map((x) => (typeof x === "string" ? x : x.url));
+                                                if (existing.includes(url)) return;
+                                                setForm({ ...form, models3d: [{ url, name: (chosen.label || chosen.name) + " model", ext: "glb" }, ...(form.models3d || [])] });
+                                            }} className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-violet-700 hover:text-violet-800">
+                                                <Box size={12} /> Use category 3D model
+                                            </button>
+                                        );
+                                    })()}
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Slashed Price (₹)</label>
-                                    <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Category *</label>
-                                    <select className={INPUT} value={form.categoryId} onChange={(e) => { setForm({ ...form, categoryId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.categoryId}>
-                                        <option value="">Select category</option>
-                                        {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                    {!categories.length && (
-                                        <p className="text-xs text-amber-600 mt-1">No categories loaded. Create a category first or refresh the page.</p>
-                                    )}
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Tags (comma-separated)</label>
-                                    <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="iphone, case, magsafe" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Brand (optional)</label>
-                                    <select className={INPUT} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }} aria-invalid={!!formError && !form.brandId}>
-                                        <option value="">Select brand</option>
-                                        {brandOptions.map((b) => (
-                                            <option key={b.id} value={b.id}>{b.name}</option>
-                                        ))}
-                                    </select>
-                                    {!brandOptions.length && (
-                                        <p className="text-xs text-amber-600 mt-1">No brands loaded. Add brands in Brands, or add categories under the &quot;brand&quot; Sort by in Categories.</p>
-                                    )}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5"><Tag size={14} /> Tags</label>
+                                        <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" />
+                                    </div>
+                                    <div>
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Brand</label>
+                                        <div className="relative">
+                                            <select className={SELECT_CLASS} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }}>
+                                                <option value="">— Select brand —</option>
+                                                {brandOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                            </select>
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Product options: Featured, Limited, Offer, Bundle */}
-                            <div className="border border-black/10 rounded-xl p-4 bg-[#f5f5f7]/50 space-y-4">
-                                <h3 className="text-sm font-semibold text-[#1d1d1f] flex items-center gap-2">
-                                    <Tag size={16} /> Product options
-                                </h3>
-                                <div className="flex flex-wrap gap-6">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-black/20" />
-                                        <span className="text-sm font-medium text-[#1d1d1f]">Featured</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-black/20" />
-                                        <span className="text-sm font-medium text-[#1d1d1f]">Limited</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-black/20" />
-                                        <span className="text-sm font-medium text-[#1d1d1f]">Offer</span>
-                                    </label>
-                                    {form.offer && (
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-sm text-[#6e6e73]">Discount (%)</label>
-                                            <input type="number" min="0" max="100" className={`${INPUT} w-24`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="20" />
-                                        </div>
-                                    )}
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-black/20" />
-                                        <span className="text-sm font-medium text-[#1d1d1f]">Bundle</span>
-                                    </label>
-                                </div>
+                            {/* Options */}
+                            <div className="flex flex-wrap items-center gap-4 py-3 border-t border-black/[0.08]">
+                                <span className="flex items-center gap-2 text-xs font-medium text-[#6e6e73]"><CheckCircle2 size={14} /> Options</span>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Featured</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Limited</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-[#6e6e73]" /><span>Offer</span></label>
+                                {form.offer && <input type="number" min="0" max="100" className={`${INPUT} w-14 py-1.5 text-xs`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="%" />}
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
                                 {form.isBundle && (
-                                    <div className="pt-2 border-t border-black/10">
-                                        <p className="text-xs text-[#6e6e73] mb-2">Select products to include in this bundle (2 or more):</p>
-                                        <div className="max-h-40 overflow-y-auto space-y-1.5 pr-2">
-                                            {bundleProductList.filter((prod) => prod.id !== editTarget?.id).map((prod) => {
-                                                const id = prod.id;
-                                                const checked = (form.bundleProductIds || []).includes(id);
-                                                return (
-                                                    <label key={id} className="flex items-center gap-2 cursor-pointer hover:bg-white/60 rounded-lg px-2 py-1.5">
-                                                        <input type="checkbox" checked={checked} onChange={(e) => {
-                                                            const ids = form.bundleProductIds || [];
-                                                            setForm({ ...form, bundleProductIds: e.target.checked ? [...ids, id] : ids.filter((i) => i !== id) });
-                                                        }} className="rounded border-black/20" />
-                                                        <Package size={14} className="text-[#6e6e73] shrink-0" />
-                                                        <span className="text-sm text-[#1d1d1f] truncate">{prod.name}</span>
-                                                        <span className="text-xs text-[#6e6e73] shrink-0">₹{prod.price}</span>
-                                                    </label>
-                                                );
-                                            })}
-                                        </div>
-                                        {(!form.bundleProductIds || form.bundleProductIds.length === 0) && (
-                                            <p className="text-xs text-amber-600 mt-1">Select at least one product for the bundle.</p>
-                                        )}
+                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5">
+                                        {bundleProductList.filter((p) => p.id !== editTarget?.id).map((prod) => {
+                                            const checked = (form.bundleProductIds || []).includes(prod.id);
+                                            return (
+                                                <label key={prod.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                                                    <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...(form.bundleProductIds || []), prod.id] : (form.bundleProductIds || []).filter((i) => i !== prod.id) })} className="rounded" />
+                                                    <span className="truncate">{prod.name}</span>
+                                                    <span className="text-xs text-[#6e6e73]">₹{prod.price}</span>
+                                                </label>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="col-span-2">
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Description</label>
-                                    <textarea className={INPUT} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description…" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Shipping Info</label>
-                                    <input className={INPUT} value={form.shippingInfo} onChange={(e) => setForm({ ...form, shippingInfo: e.target.value })} placeholder="Ships in 3-5 days" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">Return Info</label>
-                                    <input className={INPUT} value={form.returnInfo} onChange={(e) => setForm({ ...form, returnInfo: e.target.value })} placeholder="7-day returns" />
-                                </div>
-                            </div>
-
-                            {/* Product Images */}
-                            <ImageUploader
-                                label="Product Images"
-                                multiple
-                                initialUrls={form.images || []}
-                                onUploaded={(urls) => setForm({ ...form, images: urls })}
-                            />
-
-                            {/* 3D Models ↓ */}
-                            <div className="border border-violet-200 rounded-2xl p-4 bg-violet-50/30 space-y-3">
-                                <Model3DUploader
-                                    label="3D Models"
-                                    initialModels={form.models3d || []}
-                                    onUploaded={(models) => setForm({ ...form, models3d: models })}
-                                />
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={!!form.model3dView360}
-                                        onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
-                                        className="rounded border-black/20"
-                                    />
-                                    <span className="text-sm font-medium text-[#1d1d1f]">360° view</span>
-                                </label>
-                                <p className="text-xs text-[#6e6e73]">
-                                    When on: frontend shows 3D in 360° mode (user drags to orbit). When off: model auto-rotates.
-                                </p>
-                                {form.models3d && form.models3d.length > 0 && (() => {
-                                    const firstUrl = typeof form.models3d[0] === "string" ? form.models3d[0] : form.models3d[0]?.url;
-                                    if (!firstUrl) return null;
-                                    return (
-                                        <div className="pt-2">
-                                            <p className="text-xs font-medium text-[#6e6e73] mb-2">Preview (first model)</p>
-                                            <Product3DViewer
-                                                glbUrl={firstUrl}
-                                                view360={!!form.model3dView360}
-                                                width={280}
-                                                height={200}
-                                            />
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-
-                            {/* Variants */}
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className="text-sm font-medium text-[#1d1d1f]">Variants</label>
-                                    <button type="button"
-                                        onClick={() => setForm({ ...form, variants: [...form.variants, { color: "", images: [], stock: 0, models3d: [] }] })}
-                                        className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#f5f5f7] hover:bg-black/10 transition-colors">
-                                        + Add Variant
-                                    </button>
-                                </div>
-                                {form.variants.map((v, i) => (
-                                    <div key={i} className="border border-black/10 rounded-xl p-4 mb-3 space-y-3 bg-[#f5f5f7]/50">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-semibold text-[#6e6e73]">Variant {i + 1}</span>
-                                            {form.variants.length > 1 && (
-                                                <button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })}
-                                                    className="text-red-500 hover:text-red-700 transition-colors">
-                                                    <X size={14} />
-                                                </button>
-                                            )}
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-[#6e6e73] mb-1">Color</label>
-                                                <input className={INPUT} value={v.color} onChange={(e) => updateVariant(i, "color", e.target.value)} placeholder="Black" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-[#6e6e73] mb-1">Stock</label>
-                                                <input className={INPUT} type="number" min="0" value={v.stock} onChange={(e) => updateVariant(i, "stock", Number(e.target.value))} placeholder="50" />
-                                            </div>
-                                        </div>
-                                        <ImageUploader
-                                            label="Variant Images"
-                                            multiple
-                                            initialUrls={v.images || []}
-                                            onUploaded={(urls) => updateVariant(i, "images", urls)}
-                                        />
-                                        <Model3DUploader
-                                            label="Variant 3D (GLB)"
-                                            initialModels={v.models3d || []}
-                                            onUploaded={(models) => updateVariant(i, "models3d", models)}
-                                        />
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <FileText size={16} className="text-[#6e6e73]" />
+                                        Description & shipping
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
+                                    <div><label className="block text-xs text-[#6e6e73] mb-1">Description</label><textarea className={INPUT} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description" /></div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div><label className="flex items-center gap-1.5 text-xs text-[#6e6e73] mb-1"><Truck size={12} /> Shipping</label><input className={INPUT} value={form.shippingInfo} onChange={(e) => setForm({ ...form, shippingInfo: e.target.value })} placeholder="e.g. 3–5 days" /></div>
+                                        <div><label className="block text-xs text-[#6e6e73] mb-1">Returns</label><input className={INPUT} value={form.returnInfo} onChange={(e) => setForm({ ...form, returnInfo: e.target.value })} placeholder="e.g. 7 days" /></div>
                                     </div>
-                                ))}
-                            </div>
+                                </div>
+                            </details>
 
-                            <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setModal(null)}
-                                    className="flex-1 py-2.5 rounded-xl border border-black/10 text-sm font-medium hover:bg-[#f5f5f7] transition-colors">
-                                    Cancel
-                                </button>
-                                <button type="submit" disabled={saving}
-                                    className="flex-1 bg-[#1d1d1f] text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-black transition-colors disabled:opacity-60">
-                                    {saving ? "Saving…" : modal === "create" ? "Create Product" : "Save Changes"}
-                                </button>
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden" open>
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <ImageIcon size={16} className="text-[#6e6e73]" />
+                                        Media (images, gallery, 3D)
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
+                                    <ImageUploader label="Images" multiple initialUrls={form.images || []} onUploaded={(urls) => setForm({ ...form, images: urls })} />
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1"><span className="text-xs font-medium text-[#6e6e73]">Gallery (max 6)</span>{(form.gallery || []).length < 6 && <button type="button" onClick={() => setForm({ ...form, gallery: [...(form.gallery || []), { url: "", type: "image" }] })} className="text-xs font-medium text-[#1d1d1f] hover:underline">+ Add</button>}</div>
+                                        <div className="space-y-1.5">
+                                            {(form.gallery || []).map((item, i) => (
+                                                <div key={i} className="flex items-center gap-2">
+                                                    <div className="relative w-24">
+                                                        <select className={`${INPUT} w-full py-1.5 text-xs pr-8 appearance-none`} value={item.type || "image"} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], type: e.target.value }; setForm({ ...form, gallery: g }); }}><option value="image">Image</option><option value="video">Video</option></select>
+                                                        <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]" />
+                                                    </div>
+                                                    <input className={`${INPUT} flex-1 py-1.5 text-xs`} placeholder="URL" value={item.url || ""} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], url: e.target.value }; setForm({ ...form, gallery: g }); }} />
+                                                    <button type="button" onClick={() => setForm({ ...form, gallery: (form.gallery || []).filter((_, j) => j !== i) })} className="p-1.5 rounded hover:bg-red-50 text-red-500"><X size={12} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-lg bg-violet-50/50 p-3 space-y-2">
+                                        <Model3DUploader label="3D model" initialModels={form.models3d || []} onUploaded={(models) => setForm({ ...form, models3d: models })} />
+                                        <label className="flex items-center gap-2 cursor-pointer text-xs"><input type="checkbox" checked={!!form.model3dView360} onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })} className="rounded" />360° view</label>
+                                        {form.models3d?.length > 0 && (() => { const u = typeof form.models3d[0] === "string" ? form.models3d[0] : form.models3d[0]?.url; return u ? <div className="pt-1"><Product3DViewer glbUrl={u} view360={!!form.model3dView360} width={200} height={140} /></div> : null; })()}
+                                    </div>
+                                </div>
+                            </details>
+
+                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
+                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+                                        <Layers size={16} className="text-[#6e6e73]" />
+                                        Variants
+                                    </span>
+                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                        <ChevronRight size={18} className="group-open:hidden" />
+                                        <ChevronDown size={18} className="hidden group-open:block" />
+                                    </span>
+                                </summary>
+                                <div className="px-3 pb-3 pt-1 space-y-2 border-t border-black/[0.06]">
+                                    <div className="flex justify-end"><button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, { id: null, color: "", images: [], stock: 0, models3d: [] }] })} className="text-xs font-medium px-2 py-1.5 rounded-lg bg-black/5 hover:bg-black/10 flex items-center gap-1"><Plus size={12} /> Variant</button></div>
+                                    {form.variants.map((v, i) => (
+                                        <div key={i} className="rounded-lg border border-black/[0.06] p-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs text-[#6e6e73]">Variant {i + 1}</span>
+                                                {form.variants.length > 1 && <button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })} className="text-red-500 hover:text-red-700 text-xs">Remove</button>}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <input className={`${INPUT} py-1.5 text-xs`} placeholder="Color" value={v.color} onChange={(e) => updateVariant(i, "color", e.target.value)} />
+                                                <input className={`${INPUT} py-1.5 text-xs`} type="number" min="0" placeholder="Stock" value={v.stock} onChange={(e) => updateVariant(i, "stock", Number(e.target.value))} />
+                                            </div>
+                                            <ImageUploader label="" multiple initialUrls={v.images || []} onUploaded={(urls) => updateVariant(i, "images", urls)} />
+                                            <Model3DUploader label="3D" initialModels={v.models3d || []} onUploaded={(models) => updateVariant(i, "models3d", models)} />
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+
+                            <div className="flex gap-2 pt-2 border-t border-black/[0.06]">
+                                <button type="button" onClick={() => { setModal(null); setEditTarget(null); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
+                                <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black disabled:opacity-60">{saving ? "Saving…" : modal === "create" ? "Create" : "Save"}</button>
                             </div>
                         </form>
                     </Modal>
