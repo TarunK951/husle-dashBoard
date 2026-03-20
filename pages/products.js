@@ -95,6 +95,34 @@ function categoryPath(cat) {
     return parts.join(" → ");
 }
 
+function normalizeVariantForPayload(v) {
+    const idRaw = v?.id;
+    const idNum = idRaw != null && idRaw !== "" ? Number(idRaw) : null;
+    const images = Array.isArray(v?.images) ? v.images.filter(Boolean) : (v?.images ? [v.images] : []);
+    const models3d = Array.isArray(v?.models3d)
+        ? v.models3d.map((m) => (typeof m === "string" ? m : m?.url)).filter(Boolean)
+        : [];
+    const color = (v?.color || "").trim();
+    const stock = Number(v?.stock ?? 0);
+    return {
+        ...(Number.isFinite(idNum) && idNum > 0 ? { id: idNum } : {}),
+        color,
+        stock: Number.isFinite(stock) ? stock : 0,
+        images,
+        models3d,
+    };
+}
+
+function hasVariantContent(v) {
+    return Boolean(
+        (v?.color && v.color.trim()) ||
+        (Array.isArray(v?.images) && v.images.length > 0) ||
+        (Array.isArray(v?.models3d) && v.models3d.length > 0) ||
+        Number(v?.stock ?? 0) > 0 ||
+        (v?.id != null && v.id !== "")
+    );
+}
+
 
 function getExt(url = "") {
     const name = url.split("?")[0].split("/").pop() || "";
@@ -590,13 +618,13 @@ export default function ProductsPage() {
         try {
             const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
             const galleryArray = (form.gallery || []).slice(0, 6).map((g) => (typeof g === "string" ? { url: g, type: "image" } : { url: g.url || "", type: g.type || "image" })).filter((g) => g.url && g.url.trim());
-            const variantsNormalized = (form.variants || []).map((v) => ({
-                ...(v.id != null && v.id !== "" ? { id: v.id } : {}),
-                color: v.color || "",
-                stock: v.stock ?? 0,
-                images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
-                models3d: (v.models3d || []).map((m) => (typeof m === "string" ? m : m.url)).filter(Boolean),
-            }));
+            const originalVariants = (editTarget?.variants || editTarget?.ProductVariants || []).map(normalizeVariantForPayload);
+            const originalVariantIds = originalVariants.map((v) => v.id).filter((id) => id != null);
+            const variantsNormalized = (form.variants || [])
+                .map(normalizeVariantForPayload)
+                .filter((v) => hasVariantContent(v));
+            const keptVariantIds = new Set(variantsNormalized.map((v) => v.id).filter((id) => id != null));
+            const deletedVariantIds = modal === "edit" ? originalVariantIds.filter((id) => !keptVariantIds.has(id)) : [];
             const selectedModel = categories.find((c) => Number(c.id) === categoryIdNum);
             const selectedBrand = selectedModel?.parentId ? categories.find((c) => Number(c.id) === Number(selectedModel.parentId)) : null;
             const selectedBrandId = selectedBrand?.id ? Number(selectedBrand.id) : undefined;
@@ -606,6 +634,7 @@ export default function ProductsPage() {
                 images: imagesArray,
                 gallery: galleryArray,
                 variants: variantsNormalized,
+                ProductVariants: variantsNormalized,
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
@@ -631,6 +660,7 @@ export default function ProductsPage() {
                 discountPercent: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
                 isBundle: !!form.isBundle,
                 bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
+                ...(deletedVariantIds.length > 0 ? { deletedVariantIds } : {}),
             };
             if (modal === "create") {
                 await createProduct(payload);
