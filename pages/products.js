@@ -57,12 +57,30 @@ const MODEL_FORMATS = [
 // show nothing if extension-only values like ".glb" are used.
 const MODEL_EXTENSIONS = new Set(MODEL_FORMATS.map((f) => f.ext));
 
+function toSlug(value = "") {
+    return String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
 // Normalize product from API (backend may use ProductVariants, discountPercent, nested category)
 function normalizeProductFromApi(p) {
     if (!p) return p;
     const variants = p.ProductVariants ?? p.variants;
     const discount = p.discountPercent ?? p.discount;
-    return { ...p, variants: Array.isArray(variants) ? variants : p.variants, discount: discount ?? p.discount };
+    const model = p.model || (p.category ? { id: p.category.id, name: p.category.name, slug: p.category.slug || toSlug(p.category.name) } : undefined);
+    const brand =
+        (typeof p.brand === "string" && p.brand.trim() ? { name: p.brand, slug: toSlug(p.brand) } : p.brand) ||
+        (p.category?.parent ? { id: p.category.parent.id, name: p.category.parent.name, slug: p.category.parent.slug || toSlug(p.category.parent.name) } : undefined);
+    return {
+        ...p,
+        variants: Array.isArray(variants) ? variants : p.variants,
+        discount: discount ?? p.discount,
+        model,
+        brand,
+    };
 }
 
 // Category path string from nested category (e.g. Cases → apple → 17 pro)
@@ -505,7 +523,10 @@ export default function ProductsPage() {
             categoryId: product.categoryId ?? "",
             selectedRootId: root ? String(root.id) : "",
             selectedBrandId: brand ? String(brand.id) : "",
-            brandId: product.brandId != null && product.brandId !== "" ? String(product.brandId) : (brand ? String(brand.id) : ""),
+            brandId:
+                product.brandId != null && product.brandId !== ""
+                    ? String(product.brandId)
+                    : (product.brand?.id != null && product.brand?.id !== "" ? String(product.brand.id) : (brand ? String(brand.id) : "")),
             shippingInfo: product.shippingInfo || "",
             returnInfo: product.returnInfo || "",
             tags: Array.isArray(product.tags) ? product.tags.join(", ") : (product.tags || ""),
@@ -576,6 +597,10 @@ export default function ProductsPage() {
                 images: Array.isArray(v.images) ? v.images : (v.images ? [v.images] : []),
                 models3d: (v.models3d || []).map((m) => (typeof m === "string" ? m : m.url)).filter(Boolean),
             }));
+            const selectedModel = categories.find((c) => Number(c.id) === categoryIdNum);
+            const selectedBrand = selectedModel?.parentId ? categories.find((c) => Number(c.id) === Number(selectedModel.parentId)) : null;
+            const selectedBrandId = selectedBrand?.id ? Number(selectedBrand.id) : undefined;
+            const payloadBrandId = brandIdNum > 0 ? brandIdNum : selectedBrandId;
             const payload = {
                 ...form,
                 images: imagesArray,
@@ -584,7 +609,18 @@ export default function ProductsPage() {
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
-                ...(brandIdNum > 0 ? { brandId: brandIdNum } : {}),
+                ...(payloadBrandId ? { brandId: payloadBrandId } : {}),
+                modelId: categoryIdNum,
+                model: selectedModel ? {
+                    id: Number(selectedModel.id),
+                    name: selectedModel.name || "",
+                    slug: selectedModel.slug || toSlug(selectedModel.name || ""),
+                } : undefined,
+                brand: selectedBrand ? {
+                    id: Number(selectedBrand.id),
+                    name: selectedBrand.name || "",
+                    slug: selectedBrand.slug || toSlug(selectedBrand.name || ""),
+                } : undefined,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 models3d: (form.models3d || []).map((m) => (typeof m === "string" ? m : m.url)),
                 model3dView360: !!form.model3dView360,
