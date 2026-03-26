@@ -50,29 +50,36 @@ const ALL_NAV_ITEMS = [...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...SITEWIDE_ITEMS];
 export default function Layout({ children }) {
     const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(true);
-    const [user, setUser] = useState(null);
-    const [dateLabel, setDateLabel] = useState("");
-
-    useEffect(() => {
-        const token = localStorage.getItem("hustle_admin_token");
-        const userData = localStorage.getItem("hustle_admin_user");
-        if (!token) {
-            router.replace("/login");
-            return;
+    // NOTE: These values come from client-only sources (localStorage + locale date).
+    // To avoid hydration mismatch, we render stable wrappers and suppress warnings.
+    let user = null;
+    let dateLabel = "";
+    if (typeof window !== "undefined") {
+        try {
+            const userData = localStorage.getItem("hustle_admin_user");
+            user = userData ? JSON.parse(userData) : null;
+        } catch {
+            user = null;
         }
-        if (userData) setUser(JSON.parse(userData));
-    }, [router]);
-
-    useEffect(() => {
-        setDateLabel(
-            new Date().toLocaleDateString("en-IN", {
+        try {
+            dateLabel = new Date().toLocaleDateString("en-IN", {
                 weekday: "long",
                 year: "numeric",
                 month: "long",
                 day: "numeric",
-            })
-        );
-    }, []);
+            });
+        } catch {
+            dateLabel = "";
+        }
+    }
+
+    useEffect(() => {
+        const token = localStorage.getItem("hustle_admin_token");
+        if (!token) {
+            router.replace("/login");
+            return;
+        }
+    }, [router]);
 
     const handleLogout = () => {
         localStorage.removeItem("hustle_admin_token");
@@ -180,10 +187,14 @@ export default function Layout({ children }) {
 
                 {/* User + Logout */}
                 <div className="p-4 border-t border-white/10">
-                    {sidebarOpen && user && (
+                    {sidebarOpen && (
                         <div className="mb-3 px-2">
-                            <p className="text-sm font-medium truncate">{user.username || user.email}</p>
-                            <p className="text-xs text-white/40 truncate">{user.email}</p>
+                            <p className="text-sm font-medium truncate" suppressHydrationWarning>
+                                {user ? (user.username || user.email || "") : ""}
+                            </p>
+                            <p className="text-xs text-white/40 truncate" suppressHydrationWarning>
+                                {user ? (user.email || "") : ""}
+                            </p>
                         </div>
                     )}
                     <button
@@ -210,7 +221,7 @@ export default function Layout({ children }) {
                         <h1 className="font-bold text-[#1d1d1f] text-base leading-tight">
                             {ALL_NAV_ITEMS.find((n) => n.href === router.pathname)?.label || "Dashboard"}
                         </h1>
-                        <p className="text-xs text-[#6e6e73]">
+                        <p className="text-xs text-[#6e6e73]" suppressHydrationWarning>
                             {dateLabel}
                         </p>
                     </div>

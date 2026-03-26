@@ -4,7 +4,6 @@ import Layout from "@/components/Layout";
 import {
     getProducts,
     getCategories,
-    getBrands,
     createProduct,
     updateProduct,
     deleteProduct,
@@ -120,6 +119,49 @@ function hasVariantContent(v) {
         (Array.isArray(v?.models3d) && v.models3d.length > 0) ||
         Number(v?.stock ?? 0) > 0 ||
         (v?.id != null && v.id !== "")
+    );
+}
+
+function normalizeModelForPayload(m) {
+    const idRaw = m?.id;
+    const idNum = idRaw != null && idRaw !== "" ? Number(idRaw) : null;
+    const images = Array.isArray(m?.images) ? m.images.filter(Boolean) : [];
+    const models3d = Array.isArray(m?.models3d)
+        ? m.models3d.map((x) => (typeof x === "string" ? x : x?.url)).filter(Boolean)
+        : [];
+    const name = String(m?.name || "").trim();
+    const colors = Array.isArray(m?.colors) ? m.colors : [];
+    return {
+        ...(Number.isFinite(idNum) && idNum > 0 ? { id: idNum } : {}),
+        name,
+        images,
+        models3d,
+        model3dView360: !!m?.model3dView360,
+        colors: colors
+            .map((c) => {
+                const cidRaw = c?.id;
+                const cidNum = cidRaw != null && cidRaw !== "" ? Number(cidRaw) : null;
+                const color = String(c?.color || "").trim();
+                const colorCode = String(c?.colorCode || "").trim();
+                const stock = Number(c?.stock ?? 0);
+                return {
+                    ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
+                    color,
+                    ...(colorCode ? { colorCode } : {}),
+                    stock: Number.isFinite(stock) ? stock : 0,
+                };
+            })
+            .filter((c) => c.color),
+    };
+}
+
+function hasModelContent(m) {
+    return Boolean(
+        (m?.name && String(m.name).trim()) ||
+        (Array.isArray(m?.images) && m.images.length > 0) ||
+        (Array.isArray(m?.models3d) && m.models3d.length > 0) ||
+        (Array.isArray(m?.colors) && m.colors.some((c) => c?.color && String(c.color).trim())) ||
+        (m?.id != null && m.id !== "")
     );
 }
 
@@ -383,9 +425,7 @@ const emptyProduct = {
     price: "",
     slashedPrice: "",
     categoryId: "",
-    selectedRootId: "",
-    selectedBrandId: "",
-    brandId: "",
+    brand: "",
     shippingInfo: "",
     returnInfo: "",
     tags: "",
@@ -394,12 +434,14 @@ const emptyProduct = {
     models3d: [],
     model3dView360: false,
     variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
+    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
     featured: false,
     limited: false,
     offer: false,
     discount: "",
     isBundle: false,
     bundleProductIds: [],
+    screenGuardOptions: [],
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -407,7 +449,6 @@ export default function ProductsPage() {
     const [products, setProducts] = useState([]);
     const [productsError, setProductsError] = useState(null);
     const [categories, setCategories] = useState([]);
-    const [brands, setBrands] = useState([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [categoryId, setCategoryId] = useState("");
@@ -419,6 +460,8 @@ export default function ProductsPage() {
     const [saving, setSaving] = useState(false);
     const [bundleProductList, setBundleProductList] = useState([]);
     const [formError, setFormError] = useState(null);
+    const [brandDropOpen, setBrandDropOpen] = useState(false);
+    const brandInputRef = useRef(null);
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -443,66 +486,20 @@ export default function ProductsPage() {
     };
 
     useEffect(() => { getCategories().then((d) => setCategories(Array.isArray(d) ? d : (d?.data ?? d?.categories ?? []))); }, []);
-    useEffect(() => {
-        getBrands()
-            .then((d) => setBrands(Array.isArray(d) ? d : (d?.data ?? d?.brands ?? [])))
-            .catch(() => setBrands([]));
-    }, []);
 
-    // E-commerce hierarchy: root = Category, child of root = Brand, child of brand = Model
+    // New flow: categories are flat (no brand/model nesting in categories)
     const rootCategories = useMemo(() => categories.filter((c) => !c.parentId || c.parentId === ""), [categories]);
-    const getChildren = (parentId) => categories.filter((c) => Number(c.parentId) === Number(parentId));
-    const brandCategories = useMemo(() => rootCategories.flatMap((r) => getChildren(r.id)), [categories, rootCategories]);
 
-    // Cascading selection: selected root → brands under it; selected brand → models under it
-    const brandsForSelectedRoot = useMemo(() => (form.selectedRootId ? getChildren(form.selectedRootId) : []), [categories, form.selectedRootId]);
-    const modelsForSelectedBrand = useMemo(() => (form.selectedBrandId ? getChildren(form.selectedBrandId) : []), [categories, form.selectedBrandId]);
-
-    // Flat list of all models (and brands with no models) for "Assign to model" dropdown
-    const allModelsWithPath = useMemo(() => {
-        const list = [];
-        rootCategories.forEach((root) => {
-            getChildren(root.id).forEach((brand) => {
-                const models = getChildren(brand.id);
-                if (models.length === 0) {
-                    list.push({
-                        id: brand.id,
-                        name: brand.name,
-                        label: `${root.name} → ${brand.name} (brand only, no models yet)`,
-                        rootId: root.id,
-                        brandId: brand.id,
-                        model3d: undefined,
-                    });
-                } else {
-                    models.forEach((model) => {
-                        list.push({
-                            id: model.id,
-                            name: model.name,
-                            label: `${root.name} → ${brand.name} → ${model.name}`,
-                            rootId: root.id,
-                            brandId: brand.id,
-                            model3d: model.model3d || undefined,
-                        });
-                    });
-                }
-            });
+    // Collect unique brand names already used across loaded products
+    const knownBrands = useMemo(() => {
+        const names = new Set();
+        (Array.isArray(products) ? products : []).forEach((p) => {
+            const b = typeof p.brand === "object" ? p.brand?.name : p.brand;
+            if (b && b.trim()) names.add(b.trim());
         });
-        return list;
-    }, [categories, rootCategories]);
+        return Array.from(names).sort((a, b) => a.localeCompare(b));
+    }, [products]);
 
-    // Brand dropdown: API brands + e-commerce brand-level categories
-    const brandOptions = useMemo(() => {
-        const apiList = Array.isArray(brands) ? brands : [];
-        const seen = new Set(apiList.map((b) => b.id));
-        const merged = [...apiList];
-        brandCategories.forEach((c) => {
-            if (!seen.has(c.id)) {
-                seen.add(c.id);
-                merged.push({ id: c.id, name: c.name || "" });
-            }
-        });
-        return merged;
-    }, [brands, brandCategories]);
 
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
@@ -519,42 +516,15 @@ export default function ProductsPage() {
         setFormError(null);
         const product = normalizeProductFromApi(p);
         setEditTarget(product);
-        const catId = product.categoryId != null && product.categoryId !== "" ? Number(product.categoryId) : null;
-        let root = null, brand = null;
-        if (product.category?.parent?.parent) {
-            root = product.category.parent.parent;
-            brand = product.category.parent;
-        } else if (product.category?.parent) {
-            brand = product.category.parent;
-            root = product.category.parent.parent || categories.find((c) => Number(c.id) === Number(brand?.parentId || brand?.parent?.id));
-        }
-        if (!root || !brand) {
-            const cat = catId ? categories.find((c) => Number(c.id) === catId) : null;
-            if (cat) {
-                const parent = cat.parentId != null && cat.parentId !== "" ? categories.find((c) => Number(c.id) === Number(cat.parentId)) : null;
-                if (!parent) root = cat;
-                else if (!parent.parentId || parent.parentId === "") {
-                    brand = cat;
-                    root = parent;
-                } else {
-                    brand = parent;
-                    root = categories.find((c) => Number(c.id) === Number(parent.parentId)) || null;
-                }
-            }
-        }
         const variantsRaw = product.variants || product.ProductVariants || [{ color: "", images: [], stock: 0 }];
+        const modelsRaw = Array.isArray(product.models) ? product.models : [];
         setForm({
             name: product.name || "",
             description: product.description || "",
             price: product.price ?? "",
             slashedPrice: product.slashedPrice ?? "",
             categoryId: product.categoryId ?? "",
-            selectedRootId: root ? String(root.id) : "",
-            selectedBrandId: brand ? String(brand.id) : "",
-            brandId:
-                product.brandId != null && product.brandId !== ""
-                    ? String(product.brandId)
-                    : (product.brand?.id != null && product.brand?.id !== "" ? String(product.brand.id) : (brand ? String(brand.id) : "")),
+            brand: typeof product.brand === "object" ? (product.brand?.name || "") : (product.brand || ""),
             shippingInfo: product.shippingInfo || "",
             returnInfo: product.returnInfo || "",
             tags: Array.isArray(product.tags) ? product.tags.join(", ") : (product.tags || ""),
@@ -569,12 +539,25 @@ export default function ProductsPage() {
                 stock: v.stock ?? 0,
                 models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
             })),
+            models: modelsRaw.length > 0
+                ? modelsRaw.map((m) => ({
+                    id: m.id ?? null,
+                    name: m.name || "",
+                    images: Array.isArray(m.images) ? m.images : [],
+                    models3d: Array.isArray(m.models3d) ? m.models3d.map((u) => ({ url: u, name: u.split("/").pop() || "", ext: "glb" })) : [],
+                    model3dView360: !!m.model3dView360,
+                    colors: Array.isArray(m.colors) && m.colors.length > 0
+                        ? m.colors.map((c) => ({ id: c.id ?? null, color: c.color || "", colorCode: c.colorCode || "", stock: c.stock ?? 0 }))
+                        : [{ id: null, color: "", colorCode: "", stock: 0 }],
+                }))
+                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
             featured: !!product.featured,
             limited: !!product.limited,
             offer: !!product.offer,
             discount: (product.discountPercent ?? product.discount) != null ? String(product.discountPercent ?? product.discount) : "",
             isBundle: !!product.isBundle,
             bundleProductIds: Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []),
+            screenGuardOptions: Array.isArray(product.screenGuardOptions) ? product.screenGuardOptions : [],
         });
         setModal("edit");
         getProducts({ limit: 200 }).then((data) => {
@@ -587,23 +570,13 @@ export default function ProductsPage() {
         e.preventDefault();
         setFormError(null);
         const categoryIdNum = Number(form.categoryId);
-        const validCategoryIds = (categories || []).map((c) => Number(c.id)).filter((id) => id > 0);
+        const validCategoryIds = (rootCategories || []).map((c) => Number(c.id)).filter((id) => id > 0);
         if (!form.categoryId || categoryIdNum <= 0 || Number.isNaN(categoryIdNum)) {
-            setFormError("Please select Category → Brand → Model. Products must be linked to a Model (leaf category).");
+            setFormError("Please select a Category. Products must be linked to a Category.");
             return;
         }
         if (!validCategoryIds.includes(categoryIdNum)) {
-            setFormError("Selected model is invalid or was removed. Please choose from Category → Brand → Model.");
-            return;
-        }
-        const brandIdNum = Number(form.brandId);
-        const validBrandIds = (brandOptions || []).map((b) => Number(b.id)).filter((id) => id > 0);
-        if (form.brandId && (brandIdNum <= 0 || Number.isNaN(brandIdNum))) {
-            setFormError("Please select a valid brand or leave brand unset.");
-            return;
-        }
-        if (form.brandId && validBrandIds.length && !validBrandIds.includes(brandIdNum)) {
-            setFormError("Selected brand is invalid or was removed. Please choose a brand from the list or leave unset.");
+            setFormError("Selected category is invalid or was removed. Please choose a valid Category.");
             return;
         }
         if (form.isBundle && (!form.bundleProductIds || form.bundleProductIds.length < 2)) {
@@ -620,36 +593,32 @@ export default function ProductsPage() {
             const galleryArray = (form.gallery || []).slice(0, 6).map((g) => (typeof g === "string" ? { url: g, type: "image" } : { url: g.url || "", type: g.type || "image" })).filter((g) => g.url && g.url.trim());
             const originalVariants = (editTarget?.variants || editTarget?.ProductVariants || []).map(normalizeVariantForPayload);
             const originalVariantIds = originalVariants.map((v) => v.id).filter((id) => id != null);
+            const originalModels = Array.isArray(editTarget?.models) ? editTarget.models.map(normalizeModelForPayload) : [];
+            const originalModelIds = originalModels.map((m) => m.id).filter((id) => id != null);
+            const originalColorIds = originalModels.flatMap((m) => (m.colors || []).map((c) => c.id)).filter((id) => id != null);
             const variantsNormalized = (form.variants || [])
                 .map(normalizeVariantForPayload)
                 .filter((v) => hasVariantContent(v));
             const keptVariantIds = new Set(variantsNormalized.map((v) => v.id).filter((id) => id != null));
             const deletedVariantIds = modal === "edit" ? originalVariantIds.filter((id) => !keptVariantIds.has(id)) : [];
-            const selectedModel = categories.find((c) => Number(c.id) === categoryIdNum);
-            const selectedBrand = selectedModel?.parentId ? categories.find((c) => Number(c.id) === Number(selectedModel.parentId)) : null;
-            const selectedBrandId = selectedBrand?.id ? Number(selectedBrand.id) : undefined;
-            const payloadBrandId = brandIdNum > 0 ? brandIdNum : selectedBrandId;
+            const modelsNormalized = (form.models || [])
+                .map(normalizeModelForPayload)
+                .filter((m) => hasModelContent(m));
+            const keptModelIds = new Set(modelsNormalized.map((m) => m.id).filter((id) => id != null));
+            const keptColorIds = new Set(modelsNormalized.flatMap((m) => (m.colors || []).map((c) => c.id)).filter((id) => id != null));
+            const deletedModelIds = modal === "edit" ? originalModelIds.filter((id) => !keptModelIds.has(id)) : [];
+            const deletedColorIds = modal === "edit" ? originalColorIds.filter((id) => !keptColorIds.has(id)) : [];
             const payload = {
                 ...form,
                 images: imagesArray,
                 gallery: galleryArray,
                 variants: variantsNormalized,
                 ProductVariants: variantsNormalized,
+                models: modelsNormalized,
                 price: Number(form.price),
                 slashedPrice: form.slashedPrice ? Number(form.slashedPrice) : undefined,
                 categoryId: categoryIdNum,
-                ...(payloadBrandId ? { brandId: payloadBrandId } : {}),
-                modelId: categoryIdNum,
-                model: selectedModel ? {
-                    id: Number(selectedModel.id),
-                    name: selectedModel.name || "",
-                    slug: selectedModel.slug || toSlug(selectedModel.name || ""),
-                } : undefined,
-                brand: selectedBrand ? {
-                    id: Number(selectedBrand.id),
-                    name: selectedBrand.name || "",
-                    slug: selectedBrand.slug || toSlug(selectedBrand.name || ""),
-                } : undefined,
+                brand: form.brand?.trim() || undefined,
                 tags: form.tags.split(",").map((t) => t.trim()).filter(Boolean),
                 models3d: (form.models3d || []).map((m) => (typeof m === "string" ? m : m.url)),
                 model3dView360: !!form.model3dView360,
@@ -661,6 +630,9 @@ export default function ProductsPage() {
                 isBundle: !!form.isBundle,
                 bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
                 ...(deletedVariantIds.length > 0 ? { deletedVariantIds } : {}),
+                ...(deletedModelIds.length > 0 ? { deletedModelIds } : {}),
+                ...(deletedColorIds.length > 0 ? { deletedColorIds } : {}),
+                screenGuardOptions: Array.isArray(form.screenGuardOptions) ? form.screenGuardOptions : [],
             };
             if (modal === "create") {
                 await createProduct(payload);
@@ -834,16 +806,40 @@ export default function ProductsPage() {
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Price (₹)</label>
-                                        <input className={INPUT} type="number" required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="999" />
+                                        <input
+                                            className={INPUT} type="number" required value={form.price}
+                                            onChange={(e) => {
+                                                const newPrice = e.target.value;
+                                                const sp = Number(form.slashedPrice);
+                                                const np = Number(newPrice);
+                                                const autoDiscount = (form.offer && sp > 0 && np > 0 && np < sp)
+                                                    ? String(Math.round((1 - np / sp) * 100))
+                                                    : form.discount;
+                                                setForm({ ...form, price: newPrice, discount: autoDiscount });
+                                            }}
+                                            placeholder="999"
+                                        />
                                     </div>
                                     <div>
-                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Compare at (₹)</label>
-                                        <input className={INPUT} type="number" value={form.slashedPrice} onChange={(e) => setForm({ ...form, slashedPrice: e.target.value })} placeholder="1299" />
+                                        <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Compare at / MRP (₹)</label>
+                                        <input
+                                            className={INPUT} type="number" value={form.slashedPrice}
+                                            onChange={(e) => {
+                                                const newSp = e.target.value;
+                                                const sp = Number(newSp);
+                                                const disc = Number(form.discount);
+                                                const autoPrice = (form.offer && sp > 0 && disc > 0 && disc < 100)
+                                                    ? String(Math.round(sp * (1 - disc / 100)))
+                                                    : form.price;
+                                                setForm({ ...form, slashedPrice: newSp, price: autoPrice });
+                                            }}
+                                            placeholder="1299"
+                                        />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">
-                                        <Tag size={14} className="text-[#1d1d1f]" /> Category (model)
+                                        <Tag size={14} className="text-[#1d1d1f]" /> Category
                                     </label>
                                     <div className="relative">
                                         <select
@@ -851,52 +847,60 @@ export default function ProductsPage() {
                                             value={form.categoryId}
                                             onChange={(e) => {
                                                 const v = e.target.value;
-                                                const chosen = allModelsWithPath.find((m) => String(m.id) === String(v));
-                                                if (chosen) {
-                                                    setForm({ ...form, categoryId: v, selectedRootId: String(chosen.rootId), selectedBrandId: String(chosen.brandId), brandId: String(chosen.brandId) });
-                                                } else {
-                                                    setForm({ ...form, categoryId: v, selectedRootId: v ? form.selectedRootId : "", selectedBrandId: v ? form.selectedBrandId : "", brandId: v ? form.brandId : "" });
-                                                }
+                                                setForm({ ...form, categoryId: v });
                                                 setFormError(null);
                                             }}
                                             aria-invalid={!!formError && !form.categoryId}
                                         >
-                                            <option value="">Select model</option>
-                                            {allModelsWithPath.map((m) => (
-                                                <option key={m.id} value={m.id}>{m.label}</option>
+                                            <option value="">Select category</option>
+                                            {rootCategories.map((c) => (
+                                                <option key={c.id} value={c.id}>{c.name}</option>
                                             ))}
                                         </select>
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
                                     </div>
-                                    {form.categoryId && (() => {
-                                        const chosen = allModelsWithPath.find((m) => String(m.id) === String(form.categoryId));
-                                        if (!chosen?.model3d) return null;
-                                        return (
-                                            <button type="button" onClick={() => {
-                                                const url = chosen.model3d;
-                                                const existing = (form.models3d || []).map((x) => (typeof x === "string" ? x : x.url));
-                                                if (existing.includes(url)) return;
-                                                setForm({ ...form, models3d: [{ url, name: (chosen.label || chosen.name) + " model", ext: "glb" }, ...(form.models3d || [])] });
-                                            }} className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-violet-700 hover:text-violet-800">
-                                                <Box size={12} /> Use category 3D model
-                                            </button>
-                                        );
-                                    })()}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
                                         <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5"><Tag size={14} /> Tags</label>
                                         <input className={INPUT} value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="tag1, tag2" />
                                     </div>
-                                    <div>
+                                    <div className="relative">
                                         <label className="flex items-center gap-2 text-xs font-medium text-[#6e6e73] mb-1.5">Brand</label>
-                                        <div className="relative">
-                                            <select className={SELECT_CLASS} value={form.brandId} onChange={(e) => { setForm({ ...form, brandId: e.target.value }); setFormError(null); }}>
-                                                <option value="">— Select brand —</option>
-                                                {brandOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                                            </select>
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]"><ChevronDown size={18} /></span>
-                                        </div>
+                                        <input
+                                            ref={brandInputRef}
+                                            className={INPUT}
+                                            value={form.brand}
+                                            onChange={(e) => { setForm({ ...form, brand: e.target.value }); setBrandDropOpen(true); }}
+                                            onFocus={() => setBrandDropOpen(true)}
+                                            onBlur={() => setTimeout(() => setBrandDropOpen(false), 150)}
+                                            placeholder="Type or pick an existing brand"
+                                            autoComplete="off"
+                                        />
+                                        {brandDropOpen && (() => {
+                                            const q = (form.brand || "").toLowerCase().trim();
+                                            const filtered = knownBrands.filter((b) => b.toLowerCase().includes(q));
+                                            const showCreate = q && !knownBrands.some((b) => b.toLowerCase() === q);
+                                            if (!filtered.length && !showCreate) return null;
+                                            return (
+                                                <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-black/10 rounded-xl shadow-lg overflow-hidden">
+                                                    {filtered.map((b) => (
+                                                        <button key={b} type="button"
+                                                            onMouseDown={() => { setForm({ ...form, brand: b }); setBrandDropOpen(false); }}
+                                                            className="w-full text-left px-4 py-2 text-sm text-[#1d1d1f] hover:bg-[#f5f5f7] transition-colors">
+                                                            {b}
+                                                        </button>
+                                                    ))}
+                                                    {showCreate && (
+                                                        <button type="button"
+                                                            onMouseDown={() => { setForm({ ...form, brand: form.brand.trim() }); setBrandDropOpen(false); }}
+                                                            className="w-full text-left px-4 py-2 text-sm text-[#6e6e73] hover:bg-[#f5f5f7] border-t border-black/[0.06] transition-colors">
+                                                            + Create &ldquo;{form.brand.trim()}&rdquo;
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -906,8 +910,43 @@ export default function ProductsPage() {
                                 <span className="flex items-center gap-2 text-xs font-medium text-[#6e6e73]"><CheckCircle2 size={14} /> Options</span>
                                 <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Featured</span></label>
                                 <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.limited} onChange={(e) => setForm({ ...form, limited: e.target.checked })} className="rounded border-[#6e6e73]" /><span>Limited</span></label>
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.offer} onChange={(e) => setForm({ ...form, offer: e.target.checked, discount: e.target.checked ? form.discount : "" })} className="rounded border-[#6e6e73]" /><span>Offer</span></label>
-                                {form.offer && <input type="number" min="0" max="100" className={`${INPUT} w-14 py-1.5 text-xs`} value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} placeholder="%" />}
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]">
+                                    <input type="checkbox" checked={!!form.offer} onChange={(e) => {
+                                        const on = e.target.checked;
+                                        if (!on) { setForm({ ...form, offer: false, discount: "" }); return; }
+                                        // Auto-calc discount from existing price + slashed price
+                                        const sp = Number(form.slashedPrice);
+                                        const p = Number(form.price);
+                                        const autoDiscount = (sp > 0 && p > 0 && p < sp)
+                                            ? String(Math.round((1 - p / sp) * 100))
+                                            : form.discount;
+                                        setForm({ ...form, offer: true, discount: autoDiscount });
+                                    }} className="rounded border-[#6e6e73]" />
+                                    <span>Offer</span>
+                                </label>
+                                {form.offer && (
+                                    <div className="flex items-center gap-1.5">
+                                        <input
+                                            type="number" min="0" max="100"
+                                            className={`${INPUT} w-16 py-1.5 text-xs`}
+                                            value={form.discount}
+                                            onChange={(e) => {
+                                                const disc = e.target.value;
+                                                const sp = Number(form.slashedPrice);
+                                                const d = Number(disc);
+                                                const autoPrice = (sp > 0 && d > 0 && d < 100)
+                                                    ? String(Math.round(sp * (1 - d / 100)))
+                                                    : form.price;
+                                                setForm({ ...form, discount: disc, price: autoPrice });
+                                            }}
+                                            placeholder="%"
+                                        />
+                                        <span className="text-xs text-[#6e6e73]">%</span>
+                                        {form.discount && form.slashedPrice && (
+                                            <span className="text-xs text-green-600 font-medium">→ ₹{Math.round(Number(form.slashedPrice) * (1 - Number(form.discount) / 100))}</span>
+                                        )}
+                                    </div>
+                                )}
                                 <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
                                 {form.isBundle && (
                                     <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5">
@@ -921,6 +960,58 @@ export default function ProductsPage() {
                                                 </label>
                                             );
                                         })}
+                                    </div>
+                                )}
+                                {form.isBundle && (
+                                    <div className="w-full mt-2 pl-5">
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className="text-xs font-medium text-[#6e6e73]">Screen guard options (single-choice)</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "" }] })}
+                                                className="text-xs font-medium text-[#1d1d1f] hover:underline"
+                                            >
+                                                + Option
+                                            </button>
+                                        </div>
+                                        {(form.screenGuardOptions || []).length === 0 ? (
+                                            <p className="text-xs text-[#6e6e73]">Optional. Add options like HD / Privacy.</p>
+                                        ) : (
+                                            <div className="space-y-1.5">
+                                                {(form.screenGuardOptions || []).map((opt, i) => (
+                                                    <div key={i} className="flex items-center gap-2">
+                                                        <input
+                                                            className={`${INPUT} py-1.5 text-xs flex-1`}
+                                                            placeholder="Label (HD screen guard)"
+                                                            value={opt?.label || ""}
+                                                            onChange={(e) => {
+                                                                const next = [...(form.screenGuardOptions || [])];
+                                                                next[i] = { ...next[i], label: e.target.value, value: next[i]?.value || e.target.value };
+                                                                setForm({ ...form, screenGuardOptions: next });
+                                                            }}
+                                                        />
+                                                        <input
+                                                            className={`${INPUT} py-1.5 text-xs w-40`}
+                                                            placeholder="Value (hd)"
+                                                            value={opt?.value || ""}
+                                                            onChange={(e) => {
+                                                                const next = [...(form.screenGuardOptions || [])];
+                                                                next[i] = { ...next[i], value: e.target.value };
+                                                                setForm({ ...form, screenGuardOptions: next });
+                                                            }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setForm({ ...form, screenGuardOptions: (form.screenGuardOptions || []).filter((_, j) => j !== i) })}
+                                                            className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                                                            title="Remove option"
+                                                        >
+                                                            <X size={12} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
@@ -948,44 +1039,8 @@ export default function ProductsPage() {
                             <details className="group border border-black/[0.08] rounded-lg overflow-hidden" open>
                                 <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
                                     <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
-                                        <ImageIcon size={16} className="text-[#6e6e73]" />
-                                        Media (images, gallery, 3D)
-                                    </span>
-                                    <span className="flex items-center gap-1 text-[#6e6e73]">
-                                        <ChevronRight size={18} className="group-open:hidden" />
-                                        <ChevronDown size={18} className="hidden group-open:block" />
-                                    </span>
-                                </summary>
-                                <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
-                                    <ImageUploader label="Images" multiple initialUrls={form.images || []} onUploaded={(urls) => setForm({ ...form, images: urls })} />
-                                    <div>
-                                        <div className="flex items-center justify-between mb-1"><span className="text-xs font-medium text-[#6e6e73]">Gallery (max 6)</span>{(form.gallery || []).length < 6 && <button type="button" onClick={() => setForm({ ...form, gallery: [...(form.gallery || []), { url: "", type: "image" }] })} className="text-xs font-medium text-[#1d1d1f] hover:underline">+ Add</button>}</div>
-                                        <div className="space-y-1.5">
-                                            {(form.gallery || []).map((item, i) => (
-                                                <div key={i} className="flex items-center gap-2">
-                                                    <div className="relative w-24">
-                                                        <select className={`${INPUT} w-full py-1.5 text-xs pr-8 appearance-none`} value={item.type || "image"} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], type: e.target.value }; setForm({ ...form, gallery: g }); }}><option value="image">Image</option><option value="video">Video</option></select>
-                                                        <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[#6e6e73]" />
-                                                    </div>
-                                                    <input className={`${INPUT} flex-1 py-1.5 text-xs`} placeholder="URL" value={item.url || ""} onChange={(e) => { const g = [...(form.gallery || [])]; g[i] = { ...g[i], url: e.target.value }; setForm({ ...form, gallery: g }); }} />
-                                                    <button type="button" onClick={() => setForm({ ...form, gallery: (form.gallery || []).filter((_, j) => j !== i) })} className="p-1.5 rounded hover:bg-red-50 text-red-500"><X size={12} /></button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-lg bg-violet-50/50 p-3 space-y-2">
-                                        <Model3DUploader label="3D model" initialModels={form.models3d || []} onUploaded={(models) => setForm({ ...form, models3d: models })} />
-                                        <label className="flex items-center gap-2 cursor-pointer text-xs"><input type="checkbox" checked={!!form.model3dView360} onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })} className="rounded" />360° view</label>
-                                        {form.models3d?.length > 0 && (() => { const u = typeof form.models3d[0] === "string" ? form.models3d[0] : form.models3d[0]?.url; return u ? <div className="pt-1"><Product3DViewer glbUrl={u} view360={!!form.model3dView360} width={200} height={140} /></div> : null; })()}
-                                    </div>
-                                </div>
-                            </details>
-
-                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
-                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
-                                    <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
                                         <Layers size={16} className="text-[#6e6e73]" />
-                                        Variants
+                                        Models & colors (new)
                                     </span>
                                     <span className="flex items-center gap-1 text-[#6e6e73]">
                                         <ChevronRight size={18} className="group-open:hidden" />
@@ -993,19 +1048,157 @@ export default function ProductsPage() {
                                     </span>
                                 </summary>
                                 <div className="px-3 pb-3 pt-1 space-y-2 border-t border-black/[0.06]">
-                                    <div className="flex justify-end"><button type="button" onClick={() => setForm({ ...form, variants: [...form.variants, { id: null, color: "", images: [], stock: 0, models3d: [] }] })} className="text-xs font-medium px-2 py-1.5 rounded-lg bg-black/5 hover:bg-black/10 flex items-center gap-1"><Plus size={12} /> Variant</button></div>
-                                    {form.variants.map((v, i) => (
-                                        <div key={i} className="rounded-lg border border-black/[0.06] p-3 space-y-2">
+                                    <div className="flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={() => setForm({
+                                                ...form,
+                                                models: [...(form.models || []), { id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
+                                            })}
+                                            className="text-xs font-medium px-2 py-1.5 rounded-lg bg-black/5 hover:bg-black/10 flex items-center gap-1"
+                                        >
+                                            <Plus size={12} /> Model
+                                        </button>
+                                    </div>
+
+                                    {(form.models || []).map((m, mi) => (
+                                        <div key={mi} className="rounded-lg border border-black/[0.06] p-3 space-y-3">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-xs text-[#6e6e73]">Variant {i + 1}</span>
-                                                {form.variants.length > 1 && <button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, j) => j !== i) })} className="text-red-500 hover:text-red-700 text-xs">Remove</button>}
+                                                <span className="text-xs text-[#6e6e73]">Model {mi + 1}</span>
+                                                {(form.models || []).length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setForm({ ...form, models: (form.models || []).filter((_, j) => j !== mi) })}
+                                                        className="text-red-500 hover:text-red-700 text-xs"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                )}
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <input className={`${INPUT} py-1.5 text-xs`} placeholder="Color" value={v.color} onChange={(e) => updateVariant(i, "color", e.target.value)} />
-                                                <input className={`${INPUT} py-1.5 text-xs`} type="number" min="0" placeholder="Stock" value={v.stock} onChange={(e) => updateVariant(i, "stock", Number(e.target.value))} />
+
+                                            <input
+                                                className={`${INPUT} py-1.5 text-xs`}
+                                                placeholder="Model name (e.g. iPhone 14)"
+                                                value={m.name || ""}
+                                                onChange={(e) => {
+                                                    const next = [...(form.models || [])];
+                                                    next[mi] = { ...next[mi], name: e.target.value };
+                                                    setForm({ ...form, models: next });
+                                                }}
+                                            />
+
+                                            <ImageUploader
+                                                label="Model images (shared for all colors)"
+                                                multiple
+                                                initialUrls={m.images || []}
+                                                onUploaded={(urls) => {
+                                                    const next = [...(form.models || [])];
+                                                    next[mi] = { ...next[mi], images: urls };
+                                                    setForm({ ...form, models: next });
+                                                }}
+                                            />
+
+                                            <div className="rounded-lg bg-violet-50/40 p-3 space-y-2">
+                                                <Model3DUploader
+                                                    label="Model 3D"
+                                                    initialModels={m.models3d || []}
+                                                    onUploaded={(models) => {
+                                                        const next = [...(form.models || [])];
+                                                        next[mi] = { ...next[mi], models3d: models };
+                                                        setForm({ ...form, models: next });
+                                                    }}
+                                                />
+                                                <label className="flex items-center gap-2 cursor-pointer text-xs">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!!m.model3dView360}
+                                                        onChange={(e) => {
+                                                            const next = [...(form.models || [])];
+                                                            next[mi] = { ...next[mi], model3dView360: e.target.checked };
+                                                            setForm({ ...form, models: next });
+                                                        }}
+                                                        className="rounded"
+                                                    />
+                                                    360° view
+                                                </label>
                                             </div>
-                                            <ImageUploader label="" multiple initialUrls={v.images || []} onUploaded={(urls) => updateVariant(i, "images", urls)} />
-                                            <Model3DUploader label="3D" initialModels={v.models3d || []} onUploaded={(models) => updateVariant(i, "models3d", models)} />
+
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-xs font-medium text-[#6e6e73]">Colors</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const next = [...(form.models || [])];
+                                                            const colors = Array.isArray(next[mi]?.colors) ? next[mi].colors : [];
+                                                            next[mi] = { ...next[mi], colors: [...colors, { id: null, color: "", colorCode: "", stock: 0 }] };
+                                                            setForm({ ...form, models: next });
+                                                        }}
+                                                        className="text-xs font-medium text-[#1d1d1f] hover:underline"
+                                                    >
+                                                        + Color
+                                                    </button>
+                                                </div>
+                                                {(m.colors || []).map((c, ci) => (
+                                                    <div key={ci} className="grid grid-cols-6 gap-2 items-center">
+                                                        <input
+                                                            className={`${INPUT} py-1.5 text-xs col-span-3`}
+                                                            placeholder="Color (e.g. Black)"
+                                                            value={c.color || ""}
+                                                            onChange={(e) => {
+                                                                const next = [...(form.models || [])];
+                                                                const colors = [...(next[mi].colors || [])];
+                                                                colors[ci] = { ...colors[ci], color: e.target.value };
+                                                                next[mi] = { ...next[mi], colors };
+                                                                setForm({ ...form, models: next });
+                                                            }}
+                                                        />
+                                                        <input
+                                                            className={`${INPUT} py-1.5 text-xs col-span-2`}
+                                                            placeholder="#000000"
+                                                            value={c.colorCode || ""}
+                                                            onChange={(e) => {
+                                                                const next = [...(form.models || [])];
+                                                                const colors = [...(next[mi].colors || [])];
+                                                                colors[ci] = { ...colors[ci], colorCode: e.target.value };
+                                                                next[mi] = { ...next[mi], colors };
+                                                                setForm({ ...form, models: next });
+                                                            }}
+                                                        />
+                                                        <div className="flex items-center gap-2 col-span-1">
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs`}
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={c.stock ?? 0}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.models || [])];
+                                                                    const colors = [...(next[mi].colors || [])];
+                                                                    colors[ci] = { ...colors[ci], stock: Number(e.target.value) };
+                                                                    next[mi] = { ...next[mi], colors };
+                                                                    setForm({ ...form, models: next });
+                                                                }}
+                                                            />
+                                                            {(m.colors || []).length > 1 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        const next = [...(form.models || [])];
+                                                                        const colors = (next[mi].colors || []).filter((_, j) => j !== ci);
+                                                                        next[mi] = { ...next[mi], colors };
+                                                                        setForm({ ...form, models: next });
+                                                                    }}
+                                                                    className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                                                                    title="Remove color"
+                                                                >
+                                                                    <X size={12} />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

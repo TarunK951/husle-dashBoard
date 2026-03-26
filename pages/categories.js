@@ -1,18 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
-import { getCategories, createCategory, updateCategory, deleteCategory, upload3DModel } from "@/lib/api";
-import { Plus, Trash2, X, FolderTree, ChevronDown, ChevronRight, Save, Undo2, Pencil, Box, Upload } from "lucide-react";
+import { getCategories, createCategory, updateCategory, deleteCategory, uploadImage } from "@/lib/api";
+import { Plus, Trash2, X, FolderTree, ChevronDown, ChevronRight, Save, Undo2, Pencil, Upload } from "lucide-react";
 import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
-
-// True when the category being edited is a Model (child of a brand)
-const isModelLevel = (editCategory, categories) => {
-    if (!editCategory || !editCategory.parentId) return false;
-    const parent = categories.find((c) => Number(c.id) === Number(editCategory.parentId));
-    if (!parent || !parent.parentId) return false;
-    return true; // parent has parent = brand under root
-};
 
 export default function CategoriesPage() {
     const [categories, setCategories] = useState([]);
@@ -25,36 +17,19 @@ export default function CategoriesPage() {
     const [sortOptionLabel, setSortOptionLabel] = useState("");
     const [sortOptionValue, setSortOptionValue] = useState("");
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ name: "", description: "", image: "", parentId: "", model3d: "" });
+    const [form, setForm] = useState({ name: "", image: "" });
     const [editCategory, setEditCategory] = useState(null);
     const [sortByName, setSortByName] = useState("");
     const [expandedSortBy, setExpandedSortBy] = useState(new Set());
-    const [expandedEcom, setExpandedEcom] = useState(new Set());
     const [lastAction, setLastAction] = useState(null);
-    const [uploadingModel3d, setUploadingModel3d] = useState(false);
-    const model3dInputRef = useRef(null);
+    const [uploadingImage, setUploadingImage] = useState(false);
+    const imageInputRef = useRef(null);
 
     const sortByGroups = categories.filter((c) => c.parentId == null || c.parentId === "");
     const childCategories = (parentId) => categories.filter((c) => Number(c.parentId) === Number(parentId));
 
-    // E-commerce hierarchy: Category (root) → Brand (child of root) → Model (child of brand)
+    // New flow: categories are flat (no Category → Brand → Model tree)
     const rootCategories = categories.filter((c) => c.parentId == null || c.parentId === "");
-    const isBrand = (c) => c.parentId != null && c.parentId !== "" && rootCategories.some((r) => Number(r.id) === Number(c.parentId));
-    const isModel = (c) => {
-        const parent = categories.find((p) => Number(p.id) === Number(c.parentId));
-        return parent && isBrand(parent);
-    };
-    const brandCategories = categories.filter(isBrand);
-    const modelCategories = categories.filter(isModel);
-    // Parent options for new category: None, any root (Category), any brand (so new item can be Model)
-    const parentOptionsForCreate = [
-        { value: "", label: "None (root category)", level: "category" },
-        ...rootCategories.map((r) => ({ value: r.id, label: `Category: ${r.name}`, level: "category", id: r.id })),
-        ...brandCategories.map((b) => {
-            const parentName = rootCategories.find((r) => Number(r.id) === Number(b.parentId))?.name || "";
-            return { value: b.id, label: `Brand: ${b.name} (under ${parentName})`, level: "brand", id: b.id };
-        }),
-    ];
 
     const fetchCategories = () => {
         setLoading(true);
@@ -78,15 +53,6 @@ export default function CategoriesPage() {
             return next;
         });
     };
-    const toggleEcom = (id) => {
-        setExpandedEcom((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
-
     const handleCreateOrUpdate = async (e) => {
         e.preventDefault();
         if (!form.name?.trim()) return;
@@ -95,22 +61,19 @@ export default function CategoriesPage() {
         try {
             const payload = {
                 name: form.name.trim(),
-                ...(form.description?.trim() ? { description: form.description.trim() } : {}),
                 ...(form.image?.trim() ? { image: form.image.trim() } : {}),
-                ...(form.parentId && Number(form.parentId) > 0 ? { parentId: Number(form.parentId) } : {}),
-                ...(form.model3d?.trim() ? { model3d: form.model3d.trim() } : {}),
             };
             if (editCategory && editCategory.id != null) {
                 await updateCategory(editCategory.id, payload);
                 setShowModal(false);
                 setEditCategory(null);
-                setForm({ name: "", description: "", image: "", parentId: "", model3d: "" });
+                setForm({ name: "", image: "" });
             } else {
                 const created = await createCategory(payload);
                 const newId = created?.id ?? created?.data?.id;
                 if (newId) setLastAction({ type: "createCategory", categoryId: newId });
                 setShowModal(false);
-                setForm({ name: "", description: "", image: "", parentId: "", model3d: "" });
+                setForm({ name: "", image: "" });
             }
             fetchCategories();
         } catch (e) {
@@ -272,7 +235,7 @@ export default function CategoriesPage() {
                         <div className="flex items-center gap-2">
                             <button type="button" onClick={handleSave} disabled={loading} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5 hover:text-[#1d1d1f]" title="Refresh"><Save size={18} /></button>
                             <button type="button" onClick={handleUndo} disabled={loading || saving || !lastAction} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5 hover:text-[#1d1d1f]" title="Undo"><Undo2 size={18} /></button>
-                            <button onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: "", model3d: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black">
+                            <button onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black">
                                 <Plus size={16} /> Add category
                             </button>
                         </div>
@@ -288,7 +251,7 @@ export default function CategoriesPage() {
                     {/* Main hierarchy: Category → Brand → Model */}
                     <div className="bg-white rounded-xl border border-black/[0.06] overflow-hidden">
                         <div className="px-4 py-3 border-b border-black/[0.06]">
-                            <p className="text-xs text-[#6e6e73]">Category → Brand → Model. Products link to the last level. Edit a model to add an optional 3D file.</p>
+                            <p className="text-xs text-[#6e6e73]">Categories are flat. Products are created under a category; models/colors are managed inside the product.</p>
                         </div>
                         {loading ? (
                             <div className="p-5 space-y-2">
@@ -297,82 +260,21 @@ export default function CategoriesPage() {
                         ) : rootCategories.length === 0 ? (
                             <div className="px-4 py-10 text-center">
                                 <p className="text-sm text-[#6e6e73] mb-3">No categories yet.</p>
-                                <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: "", model3d: "" }); setShowModal(true); setError(null); }} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Add category</button>
+                                <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Add category</button>
                             </div>
                         ) : (
                             <div className="divide-y divide-black/[0.06]">
-                                {rootCategories.map((root) => {
-                                    const brands = childCategories(root.id);
-                                    const isRootOpen = expandedEcom.has(root.id);
-                                    return (
-                                        <div key={root.id}>
-                                            <div className="flex items-center justify-between gap-2 px-4 py-2.5 cursor-pointer hover:bg-black/[0.03] transition-colors min-h-[44px]" onClick={() => toggleEcom(root.id)}>
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    {isRootOpen ? <ChevronDown size={18} className="text-[#6e6e73] shrink-0" /> : <ChevronRight size={18} className="text-[#6e6e73] shrink-0" />}
-                                                    <span className="font-medium text-[#1d1d1f] truncate">{root.name}</span>
-                                                    {brands.length > 0 && <span className="text-xs text-[#6e6e73] shrink-0">{brands.length}</span>}
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                    <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: String(root.id), model3d: "" }); setShowModal(true); setError(null); }} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73]" title="Add brand"><Plus size={14} /></button>
-                                                    <button type="button" onClick={() => { setEditCategory(root); setForm({ name: root.name || "", description: root.description || "", image: root.image || "", parentId: "", model3d: "" }); setShowModal(true); setError(null); }} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73]" title="Edit"><Pencil size={14} /></button>
-                                                    <button type="button" onClick={() => handleDelete(root.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
-                                                </div>
-                                            </div>
-                                            {isRootOpen && (
-                                                <div className="bg-black/[0.02] pl-6 pr-4 pb-2 pt-0 space-y-0.5">
-                                                    {brands.length === 0 ? (
-                                                        <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: String(root.id), model3d: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 py-2 text-sm text-[#6e6e73] hover:text-[#1d1d1f]">
-                                                            <Plus size={14} /> Add brand
-                                                        </button>
-                                                    ) : (
-                                                        brands.map((brand) => {
-                                                            const models = childCategories(brand.id);
-                                                            const isBrandOpen = expandedEcom.has(brand.id);
-                                                            return (
-                                                                <div key={brand.id} className="rounded-lg overflow-hidden">
-                                                                    <div className="flex items-center justify-between gap-2 py-1.5 px-2 cursor-pointer hover:bg-white/80 rounded-md" onClick={() => toggleEcom(brand.id)}>
-                                                                        <div className="flex items-center gap-2 min-w-0">
-                                                                            {isBrandOpen ? <ChevronDown size={16} className="text-[#6e6e73] shrink-0" /> : <ChevronRight size={16} className="text-[#6e6e73] shrink-0" />}
-                                                                            <span className="text-sm text-[#1d1d1f] truncate">{brand.name}</span>
-                                                                            {models.length > 0 && <span className="text-xs text-[#6e6e73] shrink-0">{models.length}</span>}
-                                                                        </div>
-                                                                        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                                                            <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: String(brand.id), model3d: "" }); setShowModal(true); setError(null); }} className="p-1 rounded hover:bg-black/10 text-[#6e6e73]" title="Add model"><Plus size={12} /></button>
-                                                                            <button type="button" onClick={() => { setEditCategory(brand); setForm({ name: brand.name || "", description: brand.description || "", image: brand.image || "", parentId: brand.parentId || "", model3d: "" }); setShowModal(true); setError(null); }} className="p-1 rounded hover:bg-black/10 text-[#6e6e73]"><Pencil size={12} /></button>
-                                                                            <button type="button" onClick={() => handleDelete(brand.id)} className="p-1 rounded hover:bg-red-50 text-[#6e6e73] hover:text-red-500"><Trash2 size={12} /></button>
-                                                                        </div>
-                                                                    </div>
-                                                                    {isBrandOpen && (
-                                                                        <div className="pl-5 pr-2 pb-1">
-                                                                            {models.length === 0 ? (
-                                                                                <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", description: "", image: "", parentId: String(brand.id), model3d: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 py-1.5 text-xs text-[#6e6e73] hover:text-[#1d1d1f]">
-                                                                                    <Plus size={12} /> Add model
-                                                                                </button>
-                                                                            ) : (
-                                                                                models.map((model) => (
-                                                                                    <div key={model.id} className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-md hover:bg-white/80">
-                                                                                        <span className="text-sm text-[#1d1d1f] truncate flex items-center gap-1.5">
-                                                                                            {model.name}
-                                                                                            {model.model3d && <span className="shrink-0 w-4 h-4 rounded bg-violet-100 text-violet-600 flex items-center justify-center" title="3D"><Box size={10} /></span>}
-                                                                                        </span>
-                                                                                        <div className="flex items-center gap-0.5 shrink-0">
-                                                                                            <button type="button" onClick={() => { setEditCategory(model); setForm({ name: model.name || "", description: model.description || "", image: model.image || "", parentId: model.parentId || "", model3d: model.model3d || "" }); setShowModal(true); setError(null); }} className="p-1 rounded hover:bg-black/10 text-[#6e6e73]"><Pencil size={12} /></button>
-                                                                                            <button type="button" onClick={() => handleDelete(model.id)} className="p-1 rounded hover:bg-red-50 text-[#6e6e73] hover:text-red-500"><Trash2 size={12} /></button>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })
-                                                    )}
-                                                </div>
-                                            )}
+                                {rootCategories.map((c) => (
+                                    <div key={c.id} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-black/[0.02] transition-colors min-h-[44px]">
+                                        <div className="min-w-0">
+                                            <p className="font-medium text-[#1d1d1f] truncate">{c.name}</p>
                                         </div>
-                                    );
-                                })}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button type="button" onClick={() => { setEditCategory(c); setForm({ name: c.name || "", image: c.image || "" }); setShowModal(true); setError(null); }} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73]" title="Edit"><Pencil size={14} /></button>
+                                            <button type="button" onClick={() => handleDelete(c.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -510,49 +412,45 @@ export default function CategoriesPage() {
                                     <input className={INPUT} required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Galaxy S24" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Parent</label>
-                                    <select className={INPUT} value={form.parentId} onChange={(e) => setForm({ ...form, parentId: e.target.value })}>
-                                        {parentOptionsForCreate.map((opt) => (
-                                            <option key={opt.value || "none"} value={opt.value}>{opt.label}</option>
-                                        ))}
-                                    </select>
+                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Category image (optional)</label>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <input
+                                            ref={imageInputRef}
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={async (e) => {
+                                                const file = e.target.files?.[0];
+                                                if (!file) return;
+                                                setUploadingImage(true);
+                                                try {
+                                                    const data = await uploadImage(file);
+                                                    const url = data.url || data.secure_url || data.fileUrl || "";
+                                                    if (url) setForm((f) => ({ ...f, image: url }));
+                                                } catch (err) {
+                                                    setError(err?.message || "Image upload failed");
+                                                } finally {
+                                                    setUploadingImage(false);
+                                                    e.target.value = "";
+                                                }
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => imageInputRef.current?.click()}
+                                            disabled={uploadingImage}
+                                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#f5f5f7] text-[#1d1d1f] text-xs font-medium hover:bg-black/5 disabled:opacity-60"
+                                        >
+                                            {uploadingImage ? "…" : <><Upload size={12} /> Upload</>}
+                                        </button>
+                                        {form.image && (
+                                            <>
+                                                <img src={form.image} alt="" className="w-10 h-10 rounded-lg object-cover border border-black/10" />
+                                                <button type="button" onClick={() => setForm((f) => ({ ...f, image: "" }))} className="text-xs text-red-600 hover:underline">Clear</button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Description (optional)</label>
-                                    <input className={INPUT} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Short description" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Image URL (optional)</label>
-                                    <input className={INPUT} type="url" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://..." />
-                                </div>
-                                {(() => {
-                                    const parentCat = form.parentId ? categories.find((c) => Number(c.id) === Number(form.parentId)) : null;
-                                    const parentIsBrand = parentCat && rootCategories.some((r) => Number(r.id) === Number(parentCat.parentId));
-                                    const showModel3d = (editCategory && isModelLevel(editCategory, categories)) || (!editCategory && !!parentIsBrand);
-                                    if (!showModel3d) return null;
-                                    return (
-                                        <div className="rounded-lg bg-violet-50/80 p-3 space-y-2">
-                                            <span className="text-xs font-medium text-violet-800 flex items-center gap-1.5"><Box size={12} /> 3D model (optional)</span>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <input ref={model3dInputRef} type="file" accept=".glb,.gltf,.obj,.fbx,.stl,.usdz" className="hidden" onChange={async (e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (!file) return;
-                                                    setUploadingModel3d(true);
-                                                    try {
-                                                        const data = await upload3DModel(file);
-                                                        const url = data.url || data.secure_url || data.fileUrl || "";
-                                                        if (url) setForm((f) => ({ ...f, model3d: url }));
-                                                    } catch (err) { setError(err?.message || "Upload failed"); }
-                                                    finally { setUploadingModel3d(false); e.target.value = ""; }
-                                                }} />
-                                                <button type="button" onClick={() => model3dInputRef.current?.click()} disabled={uploadingModel3d} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-violet-100 text-violet-700 text-xs font-medium hover:bg-violet-200 disabled:opacity-60">
-                                                    {uploadingModel3d ? "…" : <><Upload size={12} /> Upload</>}
-                                                </button>
-                                                {form.model3d && <button type="button" onClick={() => setForm((f) => ({ ...f, model3d: "" }))} className="text-xs text-red-600 hover:underline">Clear</button>}
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
                                 <div className="flex gap-2 pt-1">
                                     <button type="button" onClick={() => { setShowModal(false); setEditCategory(null); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
                                     <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black disabled:opacity-60">{saving ? "Saving…" : editCategory ? "Save" : "Create"}</button>
