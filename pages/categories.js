@@ -85,7 +85,7 @@ export default function CategoriesPage() {
 
     const handleUndo = async () => {
         const action = lastAction;
-        if (!action) return;
+        if (!action?.type) return;
         setSaving(true);
         setError(null);
         try {
