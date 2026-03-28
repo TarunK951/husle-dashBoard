@@ -590,7 +590,14 @@ export default function ProductsPage() {
         setSaving(true);
         try {
             const imagesArray = Array.isArray(form.images) ? form.images : (form.images ? [form.images] : []);
-            const galleryArray = (form.gallery || []).slice(0, 6).map((g) => (typeof g === "string" ? { url: g, type: "image" } : { url: g.url || "", type: g.type || "image" })).filter((g) => g.url && g.url.trim());
+            const galleryArray = (form.gallery || [])
+                .slice(0, 6)
+                .map((g) => {
+                    if (typeof g === "string") return { url: g, type: "image" };
+                    if (g && typeof g === "object") return { url: g.url || "", type: g.type || "image" };
+                    return null;
+                })
+                .filter((g) => g && g.url && g.url.trim());
             const originalVariants = (editTarget?.variants || editTarget?.ProductVariants || []).map(normalizeVariantForPayload);
             const originalVariantIds = originalVariants.map((v) => v.id).filter((id) => id != null);
             const originalModels = Array.isArray(editTarget?.models) ? editTarget.models.map(normalizeModelForPayload) : [];

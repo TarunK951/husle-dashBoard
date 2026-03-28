@@ -54,7 +54,9 @@ export default function HomepageOffersPage() {
       };
       setFlashSale(fs);
       setSavedFlashSale(fs);
-      const sec = d.secondaryOffers || [];
+      const sec = Array.isArray(d.secondaryOffers)
+        ? d.secondaryOffers.filter((x) => x != null && typeof x === "object")
+        : [];
       setSecondaryOffers(sec);
       setSavedSecondaryOffers(sec);
     } catch (e) {

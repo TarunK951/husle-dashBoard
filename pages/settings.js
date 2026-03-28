@@ -158,7 +158,7 @@ export default function SettingsPage() {
                     </div>
 
                     {/* Toast */}
-                    {toast && (
+                    {toast && toast.type && (
                         <div className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl border text-sm font-medium ${toast.type === "success" ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"}`}>
                             {toast.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
                             {toast.msg}
