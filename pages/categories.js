@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
 import { getCategories, createCategory, updateCategory, deleteCategory, uploadImage } from "@/lib/api";
-import { Plus, Trash2, X, FolderTree, ChevronDown, ChevronRight, Save, Undo2, Pencil, Upload } from "lucide-react";
+import { Plus, Trash2, X, Save, Undo2, Pencil, Upload } from "lucide-react";
 import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
@@ -11,24 +11,14 @@ export default function CategoriesPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
-    const [showSortByModal, setShowSortByModal] = useState(false);
-    const [showAddToGroupModal, setShowAddToGroupModal] = useState(null);
-    const [showAddSortOptionModal, setShowAddSortOptionModal] = useState(null);
-    const [sortOptionLabel, setSortOptionLabel] = useState("");
-    const [sortOptionValue, setSortOptionValue] = useState("");
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ name: "", image: "" });
     const [editCategory, setEditCategory] = useState(null);
-    const [sortByName, setSortByName] = useState("");
-    const [expandedSortBy, setExpandedSortBy] = useState(new Set());
     const [lastAction, setLastAction] = useState(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     const imageInputRef = useRef(null);
 
-    const sortByGroups = categories.filter((c) => c.parentId == null || c.parentId === "");
-    const childCategories = (parentId) => categories.filter((c) => Number(c.parentId) === Number(parentId));
-
-    // New flow: categories are flat (no Category → Brand → Model tree)
+    // Categories are flat (no nested groups / sub-types under a category).
     const rootCategories = categories.filter((c) => c.parentId == null || c.parentId === "");
 
     const fetchCategories = () => {
@@ -45,14 +35,6 @@ export default function CategoriesPage() {
 
     useEffect(() => { fetchCategories(); }, []);
 
-    const toggleSortBy = (id) => {
-        setExpandedSortBy((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-    };
     const handleCreateOrUpdate = async (e) => {
         e.preventDefault();
         if (!form.name?.trim()) return;
@@ -83,101 +65,13 @@ export default function CategoriesPage() {
         }
     };
 
-    const handleCreateSortBy = async (e) => {
-        e.preventDefault();
-        if (!sortByName?.trim()) return;
-        setSaving(true);
-        setLastAction(null);
-        try {
-            const created = await createCategory({ name: sortByName.trim() });
-            const newId = created?.id ?? created?.data?.id;
-            if (newId) setLastAction({ type: "createSortBy", categoryId: newId });
-            setShowSortByModal(false);
-            setSortByName("");
-            fetchCategories();
-        } catch (e) {
-            setError(e?.message || "Failed to create Sort by");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleAddCategoryToGroup = async (groupId, categoryId) => {
-        const cat = categories.find((c) => c.id === categoryId);
-        if (!cat) return;
-        setSaving(true);
-        const previousParentId = cat.parentId != null && cat.parentId !== "" ? Number(cat.parentId) : null;
-        try {
-            await updateCategory(categoryId, {
-                name: cat.name,
-                ...(cat.description ? { description: cat.description } : {}),
-                ...(cat.image ? { image: cat.image } : {}),
-                ...(cat.model3d ? { model3d: cat.model3d } : {}),
-                parentId: Number(groupId),
-            });
-            setLastAction({ type: "addToGroup", categoryId, previousParentId, category: cat });
-            setShowAddToGroupModal(null);
-            fetchCategories();
-        } catch (e) {
-            setError(e?.message || "Failed to add category to group");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleRemoveFromGroup = async (categoryId) => {
-        const cat = categories.find((c) => c.id === categoryId);
-        if (!cat) return;
-        setSaving(true);
-        const previousParentId = cat.parentId != null && cat.parentId !== "" ? Number(cat.parentId) : null;
-        try {
-            await updateCategory(categoryId, {
-                name: cat.name,
-                ...(cat.description ? { description: cat.description } : {}),
-                ...(cat.image ? { image: cat.image } : {}),
-                ...(cat.model3d ? { model3d: cat.model3d } : {}),
-                parentId: null,
-            });
-            setLastAction({ type: "removeFromGroup", categoryId, previousParentId, category: cat });
-            fetchCategories();
-        } catch (e) {
-            setError(e?.message || "Failed to remove from group");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleAddSortOption = async (e) => {
-        e.preventDefault();
-        if (!showAddSortOptionModal || !sortOptionLabel?.trim()) return;
-        setSaving(true);
-        setLastAction(null);
-        try {
-            const created = await createCategory({
-                name: sortOptionLabel.trim(),
-                parentId: Number(showAddSortOptionModal),
-                ...(sortOptionValue?.trim() ? { description: sortOptionValue.trim() } : {}),
-            });
-            const newId = created?.id ?? created?.data?.id;
-            if (newId) setLastAction({ type: "createSortBy", categoryId: newId });
-            setShowAddSortOptionModal(null);
-            setSortOptionLabel("");
-            setSortOptionValue("");
-            fetchCategories();
-        } catch (e) {
-            setError(e?.message || "Failed to add sort option");
-        } finally {
-            setSaving(false);
-        }
-    };
-
     const handleDelete = async (id) => {
         if (!confirm("Delete this category? Products in this category may be affected.")) return;
         const cat = categories.find((c) => c.id === id);
         if (!cat) return;
         try {
             await deleteCategory(id);
-            setLastAction({ type: "deleteCategory", category: { name: cat.name, description: cat.description, image: cat.image, parentId: cat.parentId, model3d: cat.model3d } });
+            setLastAction({ type: "deleteCategory", category: { name: cat.name, description: cat.description, image: cat.image, model3d: cat.model3d } });
             fetchCategories();
         } catch (e) {
             alert(e?.message || "Failed to delete category");
@@ -195,23 +89,7 @@ export default function CategoriesPage() {
         setSaving(true);
         setError(null);
         try {
-            if (action.type === "addToGroup") {
-                await updateCategory(action.categoryId, {
-                    name: action.category.name,
-                    ...(action.category.description ? { description: action.category.description } : {}),
-                    ...(action.category.image ? { image: action.category.image } : {}),
-                    ...(action.category.model3d ? { model3d: action.category.model3d } : {}),
-                    parentId: action.previousParentId,
-                });
-            } else if (action.type === "removeFromGroup") {
-                await updateCategory(action.categoryId, {
-                    name: action.category.name,
-                    ...(action.category.description ? { description: action.category.description } : {}),
-                    ...(action.category.image ? { image: action.category.image } : {}),
-                    ...(action.category.model3d ? { model3d: action.category.model3d } : {}),
-                    parentId: action.previousParentId,
-                });
-            } else if (action.type === "createCategory" || action.type === "createSortBy") {
+            if (action.type === "createCategory") {
                 await deleteCategory(action.categoryId);
             } else if (action.type === "deleteCategory") {
                 await createCategory(action.category);
@@ -248,7 +126,6 @@ export default function CategoriesPage() {
                         </div>
                     )}
 
-                    {/* Main hierarchy: Category → Brand → Model */}
                     <div className="bg-white rounded-xl border border-black/[0.06] overflow-hidden">
                         <div className="px-4 py-3 border-b border-black/[0.06]">
                             <p className="text-xs text-[#6e6e73]">Categories are flat. Products are created under a category; models/colors are managed inside the product.</p>
@@ -279,124 +156,8 @@ export default function CategoriesPage() {
                         )}
                     </div>
 
-                    {/* Sort by (collapsible) */}
-                    <details className="bg-white rounded-xl border border-black/[0.06] overflow-hidden group">
-                        <summary className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer list-none hover:bg-black/[0.02] [&::-webkit-details-marker]:hidden">
-                            <span className="text-sm font-medium text-[#1d1d1f]">Sort by</span>
-                            <span className="text-xs text-[#6e6e73]">{sortByGroups.length} group(s)</span>
-                        </summary>
-                        <div className="border-t border-black/[0.06] px-4 py-3 space-y-2">
-                            <button type="button" onClick={() => { setShowSortByModal(true); setSortByName(""); setError(null); }} className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f] hover:underline">
-                                <Plus size={14} /> Add Sort by
-                            </button>
-                            {!loading && sortByGroups.length > 0 && (
-                                <div className="space-y-1 pt-1">
-                                    {sortByGroups.map((group) => {
-                                        const children = childCategories(group.id);
-                                        const isExpanded = expandedSortBy.has(group.id);
-                                        return (
-                                            <div key={group.id} className="rounded-lg border border-black/[0.06] overflow-hidden">
-                                                <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-black/[0.02]" onClick={() => toggleSortBy(group.id)}>
-                                                    <div className="flex items-center gap-2">
-                                                        {isExpanded ? <ChevronDown size={16} className="text-[#6e6e73]" /> : <ChevronRight size={16} className="text-[#6e6e73]" />}
-                                                        <span className="text-sm text-[#1d1d1f]">{group.name}</span>
-                                                        <span className="text-xs text-[#6e6e73]">({children.length})</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                                        <button type="button" onClick={() => setShowAddToGroupModal(group.id)} className="p-1 rounded hover:bg-black/10 text-[#6e6e73]" title="Add category"><Plus size={12} /></button>
-                                                        <button type="button" onClick={() => { setShowAddSortOptionModal(group.id); setSortOptionLabel(""); setSortOptionValue(""); setError(null); }} className="p-1 rounded hover:bg-black/10 text-[#6e6e73]" title="Add option"><Plus size={12} /></button>
-                                                        <button type="button" onClick={() => { if (confirm(`Delete "${group.name}"?`)) handleDelete(group.id); }} className="p-1 rounded hover:bg-red-50 text-[#6e6e73] hover:text-red-500"><Trash2 size={12} /></button>
-                                                    </div>
-                                                </div>
-                                                {isExpanded && children.length > 0 && (
-                                                    <div className="px-3 pb-2 pl-6 space-y-0.5">
-                                                        {children.map((c) => (
-                                                            <div key={c.id} className="flex items-center justify-between py-1 px-2 rounded text-sm">
-                                                                <span className="truncate text-[#1d1d1f]">{c.name}</span>
-                                                                <button type="button" onClick={() => handleRemoveFromGroup(c.id)} className="text-xs text-[#6e6e73] hover:text-red-600">Remove</button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    </details>
-
                     <p className="text-xs text-[#6e6e73]">{categories.length} categor{categories.length === 1 ? "y" : "ies"} total</p>
                 </div>
-
-                {/* Add Sort by modal */}
-                {showSortByModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setShowSortByModal(false)}>
-                        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm fade-in" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06]">
-                                <h2 className="text-sm font-semibold text-[#1d1d1f]">Add Sort by</h2>
-                                <button type="button" onClick={() => setShowSortByModal(false)} className="p-1.5 rounded-lg hover:bg-black/5"><X size={16} /></button>
-                            </div>
-                            <form onSubmit={handleCreateSortBy} className="p-4 space-y-3">
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Title</label>
-                                    <input className={INPUT} required value={sortByName} onChange={(e) => setSortByName(e.target.value)} placeholder="e.g. Price, Type" />
-                                </div>
-                                <div className="flex gap-2">
-                                    <button type="button" onClick={() => setShowSortByModal(false)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
-                                    <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium disabled:opacity-60">{saving ? "…" : "Create"}</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
-
-                {/* Add category to group modal */}
-                {showAddToGroupModal != null && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setShowAddToGroupModal(null)}>
-                        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm fade-in" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06]">
-                                <h2 className="text-sm font-semibold text-[#1d1d1f]">Add to group</h2>
-                                <button type="button" onClick={() => setShowAddToGroupModal(null)} className="p-1.5 rounded-lg hover:bg-black/5"><X size={16} /></button>
-                            </div>
-                            <div className="p-4 max-h-72 overflow-y-auto space-y-1">
-                                {categories.filter((c) => Number(c.parentId) !== Number(showAddToGroupModal)).map((c) => (
-                                    <button key={c.id} type="button" onClick={() => handleAddCategoryToGroup(showAddToGroupModal, c.id)} disabled={saving} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-black/5 text-left text-sm text-[#1d1d1f] disabled:opacity-60">
-                                        {c.image ? <img src={c.image} alt="" className="w-6 h-6 object-cover rounded shrink-0" /> : <FolderTree size={14} className="text-[#6e6e73] shrink-0" />}
-                                        <span className="truncate">{c.name}</span>
-                                    </button>
-                                ))}
-                                {categories.filter((c) => Number(c.parentId) !== Number(showAddToGroupModal)).length === 0 && <p className="text-xs text-[#6e6e73] py-2">No categories to add.</p>}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Add sort option modal */}
-                {showAddSortOptionModal != null && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={() => setShowAddSortOptionModal(null)}>
-                        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm fade-in" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06]">
-                                <h2 className="text-sm font-semibold text-[#1d1d1f]">Add option</h2>
-                                <button type="button" onClick={() => setShowAddSortOptionModal(null)} className="p-1.5 rounded-lg hover:bg-black/5"><X size={16} /></button>
-                            </div>
-                            <form onSubmit={handleAddSortOption} className="p-4 space-y-3">
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Label</label>
-                                    <input className={INPUT} required value={sortOptionLabel} onChange={(e) => setSortOptionLabel(e.target.value)} placeholder="e.g. Price: Low to High" />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-medium text-[#6e6e73] mb-1">Value (optional)</label>
-                                    <input className={INPUT} value={sortOptionValue} onChange={(e) => setSortOptionValue(e.target.value)} placeholder="price_asc" />
-                                </div>
-                                <div className="flex gap-2">
-                                    <button type="button" onClick={() => setShowAddSortOptionModal(null)} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
-                                    <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium disabled:opacity-60">{saving ? "…" : "Add"}</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                )}
 
                 {/* Add / Edit Category modal */}
                 {showModal && (
