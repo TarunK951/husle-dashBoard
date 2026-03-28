@@ -20,6 +20,7 @@ import {
     ShoppingCart,
     FolderTree,
     Image as ImageIcon,
+    Settings,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
@@ -43,6 +44,7 @@ const SITEWIDE_ITEMS = [
     { href: "/products", icon: Package, label: "Products" },
     { href: "/categories", icon: FolderTree, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
+    { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
 const ALL_NAV_ITEMS = [...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...SITEWIDE_ITEMS];

@@ -1,42 +1,42 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import Layout from "@/components/Layout";
-import { getOrders, getOrder, updateOrderStatus, shipOrder } from "@/lib/api";
-import { ChevronLeft, ChevronRight, Truck, X, Package } from "lucide-react";
+import { getOrders } from "@/lib/api";
+import { ChevronLeft, ChevronRight, Package, CreditCard, Banknote, ArrowRight } from "lucide-react";
 import Head from "next/head";
 
-const statusColors = {
-    pending: "bg-amber-100 text-amber-700",
-    processing: "bg-blue-100 text-blue-700",
-    shipped: "bg-purple-100 text-purple-700",
-    delivered: "bg-green-100 text-green-700",
-    cancelled: "bg-red-100 text-red-700",
+const STATUS_STYLES = {
+    pending:    "bg-amber-50 text-amber-700 border-amber-200",
+    paid:       "bg-sky-50 text-sky-700 border-sky-200",
+    processing: "bg-blue-50 text-blue-700 border-blue-200",
+    shipped:    "bg-purple-50 text-purple-700 border-purple-200",
+    delivered:  "bg-green-50 text-green-700 border-green-200",
+    cancelled:  "bg-red-50 text-red-700 border-red-200",
 };
 
 function formatCurrency(amount) {
     return new Intl.NumberFormat("en-IN", {
-        style: "currency",
-        currency: "INR",
-        maximumFractionDigits: 0,
+        style: "currency", currency: "INR", maximumFractionDigits: 0,
     }).format(amount || 0);
 }
 
 export default function OrdersPage() {
+    const router = useRouter();
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [page, setPage] = useState(1);
+    const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [statusFilter, setStatusFilter] = useState("");
-    const [detailOrder, setDetailOrder] = useState(null);
-    const [detailLoading, setDetailLoading] = useState(false);
-    const [updating, setUpdating] = useState(null);
 
     const fetchOrders = async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = await getOrders({ page, limit: 10, status: statusFilter || undefined });
+            const data = await getOrders({ page, limit: 15, status: statusFilter || undefined });
             setOrders(data.orders || data.data || []);
+            setTotal(data.total || 0);
             if (data.totalPages) setTotalPages(data.totalPages);
         } catch (e) {
             setError(e?.message || "Failed to load orders");
@@ -45,60 +45,19 @@ export default function OrdersPage() {
         }
     };
 
-    useEffect(() => {
-        fetchOrders();
-    }, [page, statusFilter]);
-
-    const openDetail = async (order) => {
-        setDetailOrder(null);
-        setDetailLoading(true);
-        try {
-            const d = await getOrder(order.id);
-            setDetailOrder(d);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setDetailLoading(false);
-        }
-    };
-
-    const handleStatusChange = async (orderId, newStatus) => {
-        setUpdating(orderId);
-        try {
-            await updateOrderStatus(orderId, newStatus);
-            fetchOrders();
-            if (detailOrder?.id === orderId) setDetailOrder((o) => (o ? { ...o, status: newStatus } : o));
-        } catch (e) {
-            alert(e.message);
-        } finally {
-            setUpdating(null);
-        }
-    };
-
-    const handleShip = async (orderId) => {
-        setUpdating(orderId);
-        try {
-            await shipOrder(orderId);
-            await handleStatusChange(orderId, "shipped");
-        } catch (e) {
-            alert(e.message);
-        } finally {
-            setUpdating(null);
-        }
-    };
+    useEffect(() => { fetchOrders(); }, [page, statusFilter]);
 
     return (
         <>
             <Head><title>Orders — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-5 fade-in">
-                    {error && (
-                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
-                            <p className="text-sm text-red-700">{error}</p>
-                            <button type="button" onClick={() => fetchOrders()} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
-                        </div>
-                    )}
+                    {/* Header */}
                     <div className="flex flex-wrap gap-3 items-center justify-between">
+                        <div>
+                            <h1 className="text-xl font-bold text-[#1d1d1f]">Orders</h1>
+                            {!loading && <p className="text-sm text-[#6e6e73] mt-0.5">{total} total orders</p>}
+                        </div>
                         <select
                             value={statusFilter}
                             onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -106,6 +65,7 @@ export default function OrdersPage() {
                         >
                             <option value="">All statuses</option>
                             <option value="pending">Pending</option>
+                            <option value="paid">Paid</option>
                             <option value="processing">Processing</option>
                             <option value="shipped">Shipped</option>
                             <option value="delivered">Delivered</option>
@@ -113,48 +73,96 @@ export default function OrdersPage() {
                         </select>
                     </div>
 
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
+                            <p className="text-sm text-red-700">{error}</p>
+                            <button onClick={fetchOrders} className="text-sm font-medium text-red-700 hover:underline">Retry</button>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
                         {loading ? (
                             <div className="p-6 space-y-3">
-                                {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-12 rounded-xl" />)}
+                                {[...Array(8)].map((_, i) => <div key={i} className="skeleton h-14 rounded-xl" />)}
                             </div>
                         ) : orders.length === 0 ? (
-                            <div className="py-16 text-center text-[#6e6e73] text-sm">No orders found</div>
+                            <div className="py-20 text-center">
+                                <Package size={36} className="mx-auto text-[#c7c7cc] mb-3" />
+                                <p className="text-[#6e6e73] text-sm font-medium">No orders found</p>
+                            </div>
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm">
                                     <thead>
-                                        <tr className="border-b border-black/5 bg-[#f5f5f7]/50">
-                                            {["ORDER", "CUSTOMER", "AMOUNT", "STATUS", "DATE", "ACTIONS"].map((h) => (
-                                                <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-[#6e6e73]">{h}</th>
+                                        <tr className="border-b border-black/5 bg-[#f5f5f7]/60">
+                                            {["Order", "Customer", "Items", "Payment", "Amount", "Order Status", "Payment Status", "Date", ""].map((h) => (
+                                                <th key={h} className="text-left px-5 py-3.5 text-xs font-semibold text-[#6e6e73] whitespace-nowrap">{h}</th>
                                             ))}
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {orders.map((order) => (
-                                            <tr key={order.id} className="border-b border-black/5 hover:bg-[#f5f5f7]/50 transition-colors">
-                                                <td className="px-5 py-3 font-mono text-xs text-[#6e6e73]">#{order.id}</td>
-                                                <td className="px-5 py-3 font-medium text-[#1d1d1f]">
-                                                    {order.user?.username || order.user?.email || "—"}
+                                            <tr
+                                                key={order.id}
+                                                onClick={() => router.push(`/orders/${order.id}`)}
+                                                className="border-b border-black/5 hover:bg-[#f5f5f7]/60 transition-colors cursor-pointer"
+                                            >
+                                                <td className="px-5 py-4">
+                                                    <span className="font-mono font-bold text-[#1d1d1f] text-xs">#{order.id}</span>
+                                                    {order.awbCode && (
+                                                        <p className="text-[10px] text-[#86868b] font-mono mt-0.5">{order.awbCode}</p>
+                                                    )}
                                                 </td>
-                                                <td className="px-5 py-3 font-semibold text-[#1d1d1f]">
-                                                    {formatCurrency(order.totalAmount ?? order.amount)}
+                                                <td className="px-5 py-4">
+                                                    <p className="font-medium text-[#1d1d1f]">{order.user?.username || "—"}</p>
+                                                    {order.shippingAddress?.fullName && (
+                                                        <p className="text-xs text-[#86868b]">{order.shippingAddress.fullName}</p>
+                                                    )}
                                                 </td>
-                                                <td className="px-5 py-3">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${statusColors[order.status] || "bg-gray-100 text-gray-600"}`}>
-                                                        {order.status}
-                                                    </span>
+                                                <td className="px-5 py-4 text-[#6e6e73]">
+                                                    {Array.isArray(order.items) ? order.items.length : "—"}
                                                 </td>
-                                                <td className="px-5 py-3 text-[#6e6e73] text-xs">
-                                                    {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN") : "—"}
+                                                <td className="px-5 py-4">
+                                                    {order.paymentId ? (
+                                                        <span className="inline-flex items-center gap-1 text-xs text-[#6e6e73]">
+                                                            <CreditCard size={11} /> Online
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center gap-1 text-xs text-amber-600">
+                                                            <Banknote size={11} /> COD
+                                                        </span>
+                                                    )}
                                                 </td>
-                                                <td className="px-5 py-3">
-                                                    <button
-                                                        onClick={() => openDetail(order)}
-                                                        className="text-[#1d1d1f] font-medium text-xs hover:underline"
-                                                    >
-                                                        View
-                                                    </button>
+                                                <td className="px-5 py-4 font-semibold text-[#1d1d1f] whitespace-nowrap">
+                                                    {formatCurrency(order.totalAmount)}
+                                                </td>
+                                                {/* Order fulfilment status */}
+                                                <td className="px-5 py-4">
+                                                    {(() => {
+                                                        const s = order.status === "paid" ? "processing" : order.status;
+                                                        return (
+                                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold border ${STATUS_STYLES[s] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                                                                {s}
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </td>
+                                                {/* Payment status */}
+                                                <td className="px-5 py-4">
+                                                    {(() => {
+                                                        const isCOD = !order.paymentId;
+                                                        if (order.refundStatus === "processed") return <span className="text-xs font-semibold text-orange-600">Refunded</span>;
+                                                        if (isCOD) return order.status === "delivered"
+                                                            ? <span className="text-xs font-semibold text-green-600">COD Collected</span>
+                                                            : <span className="text-xs font-semibold text-amber-600">COD Pending</span>;
+                                                        return <span className="text-xs font-semibold text-green-600">Paid Online</span>;
+                                                    })()}
+                                                </td>
+                                                <td className="px-5 py-4 text-[#86868b] text-xs whitespace-nowrap">
+                                                    {order.createdAt ? new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                                                </td>
+                                                <td className="px-5 py-4">
+                                                    <ArrowRight size={14} className="text-[#c7c7cc]" />
                                                 </td>
                                             </tr>
                                         ))}
@@ -165,104 +173,22 @@ export default function OrdersPage() {
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="flex justify-center gap-3">
+                        <div className="flex justify-center items-center gap-4">
                             <button
                                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                                 disabled={page === 1}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all"
+                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-30 transition-all"
                             >
                                 <ChevronLeft size={16} />
                             </button>
-                            <span className="text-sm text-[#6e6e73]">Page {page} of {totalPages}</span>
+                            <span className="text-sm text-[#6e6e73]">Page <span className="font-semibold text-[#1d1d1f]">{page}</span> of {totalPages}</span>
                             <button
                                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                                 disabled={page === totalPages}
-                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-40 transition-all"
+                                className="p-2 rounded-xl border border-black/10 hover:bg-[#1d1d1f] hover:text-white disabled:opacity-30 transition-all"
                             >
                                 <ChevronRight size={16} />
                             </button>
-                        </div>
-                    )}
-
-                    {/* Order detail modal */}
-                    {(detailOrder !== null || detailLoading) && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !detailLoading && setDetailOrder(null)}>
-                            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center justify-between px-6 py-4 border-b border-black/5 sticky top-0 bg-white z-10 rounded-t-2xl">
-                                    <h2 className="font-bold text-[#1d1d1f]">Order details</h2>
-                                    <button onClick={() => setDetailOrder(null)} className="p-2 rounded-xl hover:bg-black/5 transition-colors">
-                                        <X size={18} />
-                                    </button>
-                                </div>
-                                <div className="p-6 space-y-4">
-                                    {detailLoading ? (
-                                        <div className="skeleton h-32 rounded-xl" />
-                                    ) : detailOrder ? (
-                                        <>
-                                            <div className="grid grid-cols-2 gap-2 text-sm">
-                                                <span className="text-[#6e6e73]">Order ID</span>
-                                                <span className="font-mono">#{detailOrder.id}</span>
-                                                <span className="text-[#6e6e73]">Customer</span>
-                                                <span>{detailOrder.user?.username || detailOrder.user?.email || "—"}</span>
-                                                <span className="text-[#6e6e73]">Amount</span>
-                                                <span className="font-semibold">{formatCurrency(detailOrder.totalAmount ?? detailOrder.amount)}</span>
-                                                <span className="text-[#6e6e73]">Status</span>
-                                                <span className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-medium w-fit ${statusColors[detailOrder.status] || "bg-gray-100 text-gray-600"}`}>
-                                                    {detailOrder.status}
-                                                </span>
-                                                <span className="text-[#6e6e73]">Date</span>
-                                                <span>{detailOrder.createdAt ? new Date(detailOrder.createdAt).toLocaleString("en-IN") : "—"}</span>
-                                            </div>
-                                            {detailOrder.shippingAddress && (
-                                                <div>
-                                                    <h3 className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider mb-1">Shipping address</h3>
-                                                    <p className="text-sm text-[#1d1d1f]">
-                                                        {[detailOrder.shippingAddress?.address, detailOrder.shippingAddress?.city, detailOrder.shippingAddress?.state, detailOrder.shippingAddress?.pincode].filter(Boolean).join(", ")}
-                                                    </p>
-                                                </div>
-                                            )}
-                                            {(detailOrder.items || detailOrder.orderItems || []).length > 0 && (
-                                                <div>
-                                                    <h3 className="text-xs font-semibold text-[#6e6e73] uppercase tracking-wider mb-2">Items</h3>
-                                                    <ul className="space-y-1 text-sm">
-                                                        {(detailOrder.items || detailOrder.orderItems || []).map((item, i) => (
-                                                            <li key={i} className="flex items-center gap-2">
-                                                                <Package size={14} className="text-[#6e6e73]" />
-                                                                {item.product?.name || "Product"} × {item.quantity ?? 1}
-                                                                {item.price != null && <span className="text-[#6e6e73] ml-auto">{formatCurrency(item.price * (item.quantity ?? 1))}</span>}
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </div>
-                                            )}
-                                            <div className="flex flex-wrap gap-2 pt-4 border-t border-black/5">
-                                                <select
-                                                    value={detailOrder.status}
-                                                    onChange={(e) => handleStatusChange(detailOrder.id, e.target.value)}
-                                                    disabled={updating === detailOrder.id}
-                                                    className="px-3 py-2 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm"
-                                                >
-                                                    <option value="pending">Pending</option>
-                                                    <option value="processing">Processing</option>
-                                                    <option value="shipped">Shipped</option>
-                                                    <option value="delivered">Delivered</option>
-                                                    <option value="cancelled">Cancelled</option>
-                                                </select>
-                                                {detailOrder.status !== "shipped" && detailOrder.status !== "delivered" && detailOrder.status !== "cancelled" && (
-                                                    <button
-                                                        onClick={() => handleShip(detailOrder.id)}
-                                                        disabled={updating === detailOrder.id}
-                                                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-purple-100 text-purple-700 text-sm font-medium hover:bg-purple-200 disabled:opacity-50"
-                                                    >
-                                                        <Truck size={14} />
-                                                        {updating === detailOrder.id ? "…" : "Mark shipped"}
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </>
-                                    ) : null}
-                                </div>
-                            </div>
                         </div>
                     )}
                 </div>
