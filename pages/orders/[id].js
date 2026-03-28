@@ -193,14 +193,6 @@ export default function OrderDetailPage() {
                                         {paymentStatus.label}
                                     </span>
                                 } />
-                                <Row label="Amount" value={
-                                    <span className="font-bold text-[#1d1d1f]">{formatCurrency(order.totalAmount)}</span>
-                                } />
-                                {order.discountAmount > 0 && (
-                                    <Row label="Discount" value={<span className="text-green-600">-{formatCurrency(order.discountAmount)}</span>} />
-                                )}
-                                {order.offerCode && <Row label="Coupon" value={order.offerCode} />}
-                                {!isCOD && order.paymentId && <Row label="Payment ID" value={<span className="font-mono text-xs">{order.paymentId}</span>} />}
                                 {order.awbCode && <Row label="AWB / Waybill" value={<span className="font-mono text-xs">{order.awbCode}</span>} />}
                                 <Row label="Placed on" value={formatDateTime(order.createdAt)} />
                             </Card>
@@ -224,62 +216,147 @@ export default function OrderDetailPage() {
                         {/* Right column — items + tracking */}
                         <div className="lg:col-span-2 space-y-5">
 
-                            {/* Items */}
-                            <Card title={`Items (${items.length})`} icon={Package}>
+                            {/* Package Details */}
+                            <Card title={`Package Details (${items.length} ${items.length === 1 ? "item" : "items"})`} icon={Package}>
                                 {items.length === 0 ? (
                                     <p className="text-sm text-[#6e6e73]">No items found</p>
                                 ) : (
-                                    <ul className="space-y-3">
-                                        {items.map((item, i) => (
-                                            <li key={i} className="flex gap-4 p-4 rounded-xl bg-[#f5f5f7] border border-black/[0.04]">
-                                                {/* Product image */}
-                                                <div className="w-14 h-14 rounded-xl bg-white border border-black/[0.06] flex items-center justify-center shrink-0 overflow-hidden">
-                                                    {item.image ? (
-                                                        <img
-                                                            src={item.image}
-                                                            alt={item.name || "Product"}
-                                                            className="w-full h-full object-cover"
-                                                            onError={(e) => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }}
-                                                        />
-                                                    ) : null}
-                                                    <div style={{ display: item.image ? "none" : "flex" }} className="w-full h-full items-center justify-center">
-                                                        <Package size={20} className="text-[#86868b]" />
+                                    <div className="space-y-0 -mx-6 -mt-5">
+                                        {/* Table header */}
+                                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-6 py-2.5 bg-[#f5f5f7] border-b border-black/[0.06] text-[11px] font-semibold text-[#86868b] uppercase tracking-wider">
+                                            <span>Product</span>
+                                            <span className="text-right">Unit Price</span>
+                                            <span className="text-center">Qty</span>
+                                            <span className="text-right">Total</span>
+                                        </div>
+                                        {/* Item rows */}
+                                        {items.map((item, i) => {
+                                            const salePrice = parseFloat(item.price) || 0;
+                                            const mrp = parseFloat(item.originalPrice ?? item.mrp ?? 0) || 0;
+                                            const hasMrp = mrp > salePrice;
+                                            const qty = item.quantity ?? 1;
+                                            const discountPct = hasMrp ? Math.round(((mrp - salePrice) / mrp) * 100) : 0;
+                                            const lineTotal = salePrice * qty;
+                                            return (
+                                                <div key={i} className={`grid grid-cols-[1fr_auto_auto_auto] gap-3 px-6 py-4 items-start ${i < items.length - 1 ? "border-b border-black/[0.04]" : ""}`}>
+                                                    {/* Product info */}
+                                                    <div className="flex gap-3 items-start min-w-0">
+                                                        <div className="w-12 h-12 rounded-xl bg-[#f5f5f7] border border-black/[0.06] flex items-center justify-center shrink-0 overflow-hidden">
+                                                            {item.image ? (
+                                                                <img src={item.image} alt={item.name || "Product"} className="w-full h-full object-cover rounded-xl"
+                                                                    onError={(e) => { e.target.style.display = "none"; e.target.nextSibling.style.display = "flex"; }} />
+                                                            ) : null}
+                                                            <div style={{ display: item.image ? "none" : "flex" }} className="w-full h-full items-center justify-center">
+                                                                <Package size={18} className="text-[#86868b]" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="font-semibold text-[#1d1d1f] text-sm leading-snug">{item.name || `Product #${item.productId}`}</p>
+                                                            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                                {item.modelName && (
+                                                                    <span className="text-[11px] font-medium text-[#1d1d1f] bg-[#f5f5f7] px-2 py-0.5 rounded-lg border border-black/[0.06]">
+                                                                        📱 {item.modelName}
+                                                                    </span>
+                                                                )}
+                                                                {item.colorName && (
+                                                                    <span className="text-[11px] font-medium text-[#1d1d1f] bg-[#f5f5f7] px-2 py-0.5 rounded-lg border border-black/[0.06]">
+                                                                        🎨 {item.colorName}
+                                                                    </span>
+                                                                )}
+                                                                {item.screenGuardType && (
+                                                                    <span className="text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200">
+                                                                        🛡 {item.screenGuardType}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {/* Unit price */}
+                                                    <div className="text-right shrink-0">
+                                                        <p className="text-sm font-semibold text-[#1d1d1f]">{formatCurrency(salePrice)}</p>
+                                                        {hasMrp && (
+                                                            <>
+                                                                <p className="text-[11px] text-[#86868b] line-through mt-0.5">{formatCurrency(mrp)}</p>
+                                                                <span className="inline-block mt-0.5 text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-md">
+                                                                    {discountPct}% off
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                    {/* Qty */}
+                                                    <div className="text-center shrink-0">
+                                                        <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#f5f5f7] border border-black/[0.06] text-sm font-semibold text-[#1d1d1f]">{qty}</span>
+                                                    </div>
+                                                    {/* Line total */}
+                                                    <div className="text-right shrink-0">
+                                                        <p className="text-sm font-bold text-[#1d1d1f]">{formatCurrency(lineTotal)}</p>
+                                                        {hasMrp && (
+                                                            <p className="text-[11px] text-green-600 font-medium mt-0.5">
+                                                                Save {formatCurrency((mrp - salePrice) * qty)}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-semibold text-[#1d1d1f] text-sm">{item.name || `Product #${item.productId}`}</p>
-                                                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                                        <span className="text-xs text-[#6e6e73] bg-white px-2 py-0.5 rounded-lg border border-black/[0.06]">
-                                                            Qty: {item.quantity ?? 1}
-                                                        </span>
-                                                        {item.modelName && (
-                                                            <span className="text-xs font-medium text-[#1d1d1f] bg-white px-2 py-0.5 rounded-lg border border-black/[0.06]">
-                                                                📱 {item.modelName}
-                                                            </span>
-                                                        )}
-                                                        {item.colorName && (
-                                                            <span className="text-xs font-medium text-[#1d1d1f] bg-white px-2 py-0.5 rounded-lg border border-black/[0.06]">
-                                                                🎨 {item.colorName}
-                                                            </span>
-                                                        )}
-                                                        {item.screenGuardType && (
-                                                            <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200">
-                                                                🛡 {item.screenGuardType}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                <div className="text-sm font-bold text-[#1d1d1f] shrink-0">
-                                                    {formatCurrency(item.price * (item.quantity ?? 1))}
-                                                </div>
-                                            </li>
-                                        ))}
-                                        <li className="flex justify-between pt-2 border-t border-black/[0.06]">
-                                            <span className="text-sm font-semibold text-[#1d1d1f]">Total</span>
-                                            <span className="text-base font-bold text-[#1d1d1f]">{formatCurrency(order.totalAmount)}</span>
-                                        </li>
-                                    </ul>
+                                            );
+                                        })}
+                                    </div>
                                 )}
+                            </Card>
+
+                            {/* Payment Details */}
+                            <Card title="Payment Details" icon={CreditCard}>
+                                {(() => {
+                                    const subTotal = items.reduce((sum, i) => sum + (parseFloat(i.price) || 0) * (i.quantity ?? 1), 0);
+                                    const shipping = parseFloat(order.shippingCharge) || 0;
+                                    const discount = parseFloat(order.discountAmount) || 0;
+                                    const total = parseFloat(order.totalAmount) || 0;
+                                    const itemCount = items.reduce((sum, i) => sum + (i.quantity ?? 1), 0);
+                                    return (
+                                        <div className="space-y-0 -mx-6 -mt-5">
+                                            <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.04]">
+                                                <div>
+                                                    <p className="text-sm font-medium text-[#1d1d1f]">Sub Total</p>
+                                                    <p className="text-[11px] text-[#86868b] mt-0.5">{items.length} item{items.length !== 1 ? "s" : ""} × {itemCount} nos</p>
+                                                </div>
+                                                <p className="text-sm font-semibold text-[#1d1d1f]">{formatCurrency(subTotal)}</p>
+                                            </div>
+                                            {shipping > 0 && (
+                                                <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.04]">
+                                                    <p className="text-sm font-medium text-[#1d1d1f]">Shipping Charge</p>
+                                                    <p className="text-sm font-semibold text-[#1d1d1f]">+{formatCurrency(shipping)}</p>
+                                                </div>
+                                            )}
+                                            {shipping === 0 && (
+                                                <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.04]">
+                                                    <p className="text-sm font-medium text-[#1d1d1f]">Shipping</p>
+                                                    <p className="text-sm font-semibold text-green-600">Free</p>
+                                                </div>
+                                            )}
+                                            {discount > 0 && (
+                                                <div className="px-6 py-3.5 flex items-center justify-between border-b border-black/[0.04]">
+                                                    <div>
+                                                        <p className="text-sm font-medium text-[#1d1d1f]">Discount</p>
+                                                        {order.offerCode && (
+                                                            <span className="inline-block mt-0.5 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded-md">
+                                                                {order.offerCode}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-sm font-semibold text-green-600">-{formatCurrency(discount)}</p>
+                                                </div>
+                                            )}
+                                            <div className="px-6 py-4 flex items-center justify-between bg-[#f5f5f7] rounded-b-2xl">
+                                                <div>
+                                                    <p className="text-sm font-bold text-[#1d1d1f]">Total Amount {isCOD ? "(COD)" : "Paid"}</p>
+                                                    {!isCOD && order.paymentId && (
+                                                        <p className="text-[11px] font-mono text-[#86868b] mt-0.5">{order.paymentId}</p>
+                                                    )}
+                                                </div>
+                                                <p className="text-lg font-bold text-[#1d1d1f]">{formatCurrency(total)}</p>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
                             </Card>
 
                             {/* Delhivery Tracking */}
