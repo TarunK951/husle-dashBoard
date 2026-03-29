@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useRouter } from "next/router";
+import Image from "next/image";
 import { login } from "@/lib/api";
-import { Eye, EyeOff, ShoppingBag } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import Head from "next/head";
 
 export default function LoginPage() {
@@ -50,8 +51,15 @@ export default function LoginPage() {
                     <div className="bg-white rounded-3xl shadow-xl shadow-black/5 p-8 border border-black/5">
                         {/* Logo */}
                         <div className="flex flex-col items-center mb-8">
-                            <div className="w-16 h-16 rounded-2xl bg-[#1d1d1f] flex items-center justify-center mb-4 shadow-lg">
-                                <ShoppingBag size={28} className="text-white" />
+                            <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center mb-4 shadow-lg border border-black/10 overflow-hidden p-2">
+                                <Image
+                                    src="/logo/huslelife%20logo.png"
+                                    alt="Husle"
+                                    width={48}
+                                    height={48}
+                                    className="object-contain w-full h-full"
+                                    priority
+                                />
                             </div>
                             <h1 className="font-bold text-2xl text-[#1d1d1f] tracking-tight">
                                 Hustle Admin
