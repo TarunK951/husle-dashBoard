@@ -229,12 +229,12 @@ export default function Layout({ children }) {
                     </div>
                     <div className="ml-auto flex items-center gap-2">
                         <a
-                            href="https://hustlelifestyle.netlify.app"
+                            href="https://husle-dash-board.vercel.app/"
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#1d1d1f] text-white hover:bg-black transition-colors"
                         >
-                            View Site →
+                            Visit site →
                         </a>
                     </div>
                 </header>
