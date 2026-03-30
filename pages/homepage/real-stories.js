@@ -64,6 +64,14 @@ export default function RealStoriesPage() {
         setItems((i) => i.map((x, j) => (j === idx ? { ...x, [field]: value } : x)));
 
     const triggerUpload = (index) => {
+        const row = items[index];
+        const isVideo = (row?.type || "image") === "video";
+        // Default input had accept="image/*" only — OS file picker rejected videos.
+        if (fileInputRef.current) {
+            fileInputRef.current.accept = isVideo
+                ? "video/mp4,video/webm,video/quicktime,video/x-msvideo,.mp4,.webm,.mov,.avi"
+                : "image/*";
+        }
         setUploadingIndex(index);
         fileInputRef.current?.click();
     };
@@ -71,6 +79,18 @@ export default function RealStoriesPage() {
         const file = e.target.files?.[0];
         if (!file || uploadingIndex == null) return;
         e.target.value = "";
+        const row = items[uploadingIndex];
+        const isVideo = (row?.type || "image") === "video";
+        if (isVideo && !file.type.startsWith("video/")) {
+            alert("Please choose a video file, or switch the type to Image for photos.");
+            setUploadingIndex(null);
+            return;
+        }
+        if (!isVideo && !file.type.startsWith("image/")) {
+            alert("Please choose an image file, or switch the type to Video for video uploads.");
+            setUploadingIndex(null);
+            return;
+        }
         try {
             const data = await uploadImage(file);
             const url = data.url || data.secure_url || data.fileUrl || "";
@@ -149,7 +169,7 @@ export default function RealStoriesPage() {
                         </button>
                     </div>
 
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} aria-label="Upload image or video" />
 
                     <div className="space-y-3">
                         {items.map((it, i) => (
@@ -165,7 +185,12 @@ export default function RealStoriesPage() {
                                             <option value="image">Image</option>
                                         </select>
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <input className={INPUT} placeholder="Source URL or upload image below" value={it.src} onChange={(e) => updateItem(i, "src", e.target.value)} />
+                                            <input
+                                                className={INPUT}
+                                                placeholder={it.type === "video" ? "Video URL or upload video below" : "Image URL or upload image below"}
+                                                value={it.src}
+                                                onChange={(e) => updateItem(i, "src", e.target.value)}
+                                            />
                                             <button type="button" onClick={() => triggerUpload(i)} disabled={uploadingIndex !== null} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm font-medium hover:bg-black/5 disabled:opacity-50 shrink-0">
                                                 {uploadingIndex === i ? <span className="inline-block w-4 h-4 border-2 border-[#1d1d1f] border-t-transparent rounded-full animate-spin" /> : <Upload size={16} />}
                                                 {uploadingIndex === i ? "Uploading…" : "Upload"}
@@ -174,7 +199,10 @@ export default function RealStoriesPage() {
                                         {it.src && (it.type === "image" || !it.type) && (
                                             <img src={it.src} alt="" className="w-20 h-20 object-cover rounded-lg border border-black/10" />
                                         )}
-                                        <input className={INPUT} placeholder="Video URL (optional, for popup when card is image)" value={it.videoSrc || ""} onChange={(e) => updateItem(i, "videoSrc", e.target.value)} />
+                                        {it.src && it.type === "video" && (
+                                            <video src={it.src} className="w-full max-w-xs max-h-40 rounded-lg border border-black/10 bg-black" controls muted playsInline />
+                                        )}
+                                        <input className={INPUT} placeholder="Extra video URL (optional — e.g. popup when main card is an image)" value={it.videoSrc || ""} onChange={(e) => updateItem(i, "videoSrc", e.target.value)} />
                                         <input className={INPUT} placeholder="Title" value={it.title} onChange={(e) => updateItem(i, "title", e.target.value)} />
                                         <input className={INPUT} placeholder="User / handle" value={it.user} onChange={(e) => updateItem(i, "user", e.target.value)} />
                                         <input className={INPUT} type="number" min={0} max={5} step={0.5} placeholder="Star rating shown on this story card (0–5, optional)" value={it.rating} onChange={(e) => updateItem(i, "rating", e.target.value)} />
@@ -184,6 +212,8 @@ export default function RealStoriesPage() {
                                         <div className="w-16 h-16 rounded-xl border border-black/10 bg-[#f5f5f7] overflow-hidden shrink-0 flex items-center justify-center">
                                             {it.src && (it.type === "image" || !it.type) ? (
                                                 <img src={it.src} alt="" className="w-full h-full object-cover" />
+                                            ) : it.src && it.type === "video" ? (
+                                                <video src={it.src} className="w-full h-full object-cover" muted playsInline />
                                             ) : (
                                                 <span className="text-[#6e6e73] text-xs">{(it.type || "image").slice(0, 1)}</span>
                                             )}

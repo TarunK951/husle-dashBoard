@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/router";
 import {
     Package,
@@ -108,8 +109,15 @@ export default function Layout({ children }) {
             >
                 {/* Logo */}
                 <div className="flex items-center gap-3 px-5 py-6 border-b border-white/10">
-                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0">
-                        <span className="text-[#1d1d1f] font-black text-sm">HL</span>
+                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center shrink-0 overflow-hidden p-1">
+                        <Image
+                            src="/logo/huslelife%20logo.png"
+                            alt="Husle"
+                            width={28}
+                            height={28}
+                            className="object-contain w-full h-full"
+                            priority
+                        />
                     </div>
                     {sidebarOpen && (
                         <div className="min-w-0">
@@ -231,12 +239,12 @@ export default function Layout({ children }) {
                     </div>
                     <div className="ml-auto flex items-center gap-2">
                         <a
-                            href="https://hustlelifestyle.netlify.app"
+                            href="https://husle-dash-board.vercel.app/"
                             target="_blank"
                             rel="noreferrer"
                             className="text-xs font-medium px-3 py-1.5 rounded-lg bg-[#1d1d1f] text-white hover:bg-black transition-colors"
                         >
-                            View Site →
+                            Visit site →
                         </a>
                     </div>
                 </header>
