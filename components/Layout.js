@@ -19,6 +19,7 @@ import {
     Search,
     ShoppingCart,
     FolderTree,
+    Star,
     Image as ImageIcon,
     Settings,
 } from "lucide-react";
@@ -44,6 +45,7 @@ const SITEWIDE_ITEMS = [
     { href: "/products", icon: Package, label: "Products" },
     { href: "/categories", icon: FolderTree, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
+    { href: "/reviews", icon: Star, label: "Product reviews" },
     { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
