@@ -21,6 +21,8 @@ import {
     ChevronLeft,
     ChevronRight,
     ChevronDown,
+    ArrowUp,
+    ArrowDown,
     Image as ImageIcon,
     Box,
     FileText,
@@ -122,7 +124,7 @@ function hasVariantContent(v) {
     );
 }
 
-function normalizeModelForPayload(m) {
+function normalizeModelForPayload(m, modelIndex = 0) {
     const idRaw = m?.id;
     const idNum = idRaw != null && idRaw !== "" ? Number(idRaw) : null;
     const images = Array.isArray(m?.images) ? m.images.filter(Boolean) : [];
@@ -131,27 +133,31 @@ function normalizeModelForPayload(m) {
         : [];
     const name = String(m?.name || "").trim();
     const colors = Array.isArray(m?.colors) ? m.colors : [];
+    // Array index is the display order (see Move up/down); do not trust stale m.sortOrder after reorder.
+    const sortOrder = modelIndex;
+    const colorRows = colors
+        .map((c) => {
+            const cidRaw = c?.id;
+            const cidNum = cidRaw != null && cidRaw !== "" ? Number(cidRaw) : null;
+            const color = String(c?.color || "").trim();
+            const colorCode = String(c?.colorCode || "").trim();
+            const stock = Number(c?.stock ?? 0);
+            return {
+                ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
+                color,
+                ...(colorCode ? { colorCode } : {}),
+                stock: Number.isFinite(stock) ? stock : 0,
+            };
+        })
+        .filter((c) => c.color);
     return {
         ...(Number.isFinite(idNum) && idNum > 0 ? { id: idNum } : {}),
         name,
         images,
         models3d,
         model3dView360: !!m?.model3dView360,
-        colors: colors
-            .map((c) => {
-                const cidRaw = c?.id;
-                const cidNum = cidRaw != null && cidRaw !== "" ? Number(cidRaw) : null;
-                const color = String(c?.color || "").trim();
-                const colorCode = String(c?.colorCode || "").trim();
-                const stock = Number(c?.stock ?? 0);
-                return {
-                    ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
-                    color,
-                    ...(colorCode ? { colorCode } : {}),
-                    stock: Number.isFinite(stock) ? stock : 0,
-                };
-            })
-            .filter((c) => c.color),
+        sortOrder,
+        colors: colorRows.map((c, cIdx) => ({ ...c, sortOrder: cIdx })),
     };
 }
 
@@ -518,6 +524,9 @@ export default function ProductsPage() {
         setEditTarget(product);
         const variantsRaw = product.variants || product.ProductVariants || [{ color: "", images: [], stock: 0 }];
         const modelsRaw = Array.isArray(product.models) ? product.models : [];
+        const modelsSorted = [...modelsRaw].sort(
+            (a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
+        );
         setForm({
             name: product.name || "",
             description: product.description || "",
@@ -539,15 +548,17 @@ export default function ProductsPage() {
                 stock: v.stock ?? 0,
                 models3d: (v.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m),
             })),
-            models: modelsRaw.length > 0
-                ? modelsRaw.map((m) => ({
+            models: modelsSorted.length > 0
+                ? modelsSorted.map((m) => ({
                     id: m.id ?? null,
                     name: m.name || "",
                     images: Array.isArray(m.images) ? m.images : [],
                     models3d: Array.isArray(m.models3d) ? m.models3d.map((u) => ({ url: u, name: u.split("/").pop() || "", ext: "glb" })) : [],
                     model3dView360: !!m.model3dView360,
                     colors: Array.isArray(m.colors) && m.colors.length > 0
-                        ? m.colors.map((c) => ({ id: c.id ?? null, color: c.color || "", colorCode: c.colorCode || "", stock: c.stock ?? 0 }))
+                        ? [...m.colors]
+                            .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+                            .map((c) => ({ id: c.id ?? null, color: c.color || "", colorCode: c.colorCode || "", stock: c.stock ?? 0 }))
                         : [{ id: null, color: "", colorCode: "", stock: 0 }],
                 }))
                 : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
@@ -600,7 +611,9 @@ export default function ProductsPage() {
                 .filter((g) => g && g.url && g.url.trim());
             const originalVariants = (editTarget?.variants || editTarget?.ProductVariants || []).map(normalizeVariantForPayload);
             const originalVariantIds = originalVariants.map((v) => v.id).filter((id) => id != null);
-            const originalModels = Array.isArray(editTarget?.models) ? editTarget.models.map(normalizeModelForPayload) : [];
+            const originalModels = Array.isArray(editTarget?.models)
+                ? editTarget.models.map((m, i) => normalizeModelForPayload(m, i))
+                : [];
             const originalModelIds = originalModels.map((m) => m.id).filter((id) => id != null);
             const originalColorIds = originalModels.flatMap((m) => (m.colors || []).map((c) => c.id)).filter((id) => id != null);
             const variantsNormalized = (form.variants || [])
@@ -609,7 +622,7 @@ export default function ProductsPage() {
             const keptVariantIds = new Set(variantsNormalized.map((v) => v.id).filter((id) => id != null));
             const deletedVariantIds = modal === "edit" ? originalVariantIds.filter((id) => !keptVariantIds.has(id)) : [];
             const modelsNormalized = (form.models || [])
-                .map(normalizeModelForPayload)
+                .map((m, i) => normalizeModelForPayload(m, i))
                 .filter((m) => hasModelContent(m));
             const keptModelIds = new Set(modelsNormalized.map((m) => m.id).filter((id) => id != null));
             const keptColorIds = new Set(modelsNormalized.flatMap((m) => (m.colors || []).map((c) => c.id)).filter((id) => id != null));
@@ -1035,7 +1048,20 @@ export default function ProductsPage() {
                                     </span>
                                 </summary>
                                 <div className="px-3 pb-3 pt-1 space-y-3 border-t border-black/[0.06]">
-                                    <div><label className="block text-xs text-[#6e6e73] mb-1">Description</label><textarea className={INPUT} rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Product description" /></div>
+                                    <div>
+                                        <label className="block text-xs text-[#6e6e73] mb-1">Description</label>
+                                        <textarea
+                                            className={`${INPUT} font-mono text-[13px] leading-relaxed`}
+                                            rows={8}
+                                            value={form.description}
+                                            onChange={(e) => setForm({ ...form, description: e.target.value })}
+                                            placeholder={"Write paragraphs, or use line breaks.\n\n- Bullet one\n- Bullet two\n\nCustomers will see this exactly as formatted."}
+                                        />
+                                        <p className="mt-1.5 text-[11px] text-[#6e6e73] leading-snug">
+                                            Line breaks and spacing are preserved on the store. Use plain text; start lines with <code className="text-[10px] bg-black/[0.04] px-1 rounded">-</code>,{" "}
+                                            <code className="text-[10px] bg-black/[0.04] px-1 rounded">•</code>, or numbers for lists.
+                                        </p>
+                                    </div>
                                     <div className="grid grid-cols-2 gap-3">
                                         <div><label className="flex items-center gap-1.5 text-xs text-[#6e6e73] mb-1"><Truck size={12} /> Shipping</label><input className={INPUT} value={form.shippingInfo} onChange={(e) => setForm({ ...form, shippingInfo: e.target.value })} placeholder="e.g. 3–5 days" /></div>
                                         <div><label className="block text-xs text-[#6e6e73] mb-1">Returns</label><input className={INPUT} value={form.returnInfo} onChange={(e) => setForm({ ...form, returnInfo: e.target.value })} placeholder="e.g. 7 days" /></div>
@@ -1055,6 +1081,9 @@ export default function ProductsPage() {
                                     </span>
                                 </summary>
                                 <div className="px-3 pb-3 pt-1 space-y-2 border-t border-black/[0.06]">
+                                    <p className="text-[11px] text-[#6e6e73] leading-snug">
+                                        Order of models below matches the <strong className="font-medium text-[#1d1d1f]">SELECT MODEL</strong> dropdown on the product page (top = first).
+                                    </p>
                                     <div className="flex justify-end">
                                         <button
                                             type="button"
@@ -1069,18 +1098,51 @@ export default function ProductsPage() {
                                     </div>
 
                                     {(form.models || []).map((m, mi) => (
-                                        <div key={mi} className="rounded-lg border border-black/[0.06] p-3 space-y-3">
-                                            <div className="flex items-center justify-between">
+                                        <div key={m.id != null ? `mid-${m.id}` : `mnew-${mi}`} className="rounded-lg border border-black/[0.06] p-3 space-y-3">
+                                            <div className="flex items-center justify-between gap-2 flex-wrap">
                                                 <span className="text-xs text-[#6e6e73]">Model {mi + 1}</span>
-                                                {(form.models || []).length > 1 && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setForm({ ...form, models: (form.models || []).filter((_, j) => j !== mi) })}
-                                                        className="text-red-500 hover:text-red-700 text-xs"
-                                                    >
-                                                        Remove
-                                                    </button>
-                                                )}
+                                                <div className="flex items-center gap-1">
+                                                    <div className="flex items-center rounded-lg border border-black/10 overflow-hidden mr-1">
+                                                        <button
+                                                            type="button"
+                                                            title="Move up"
+                                                            disabled={mi === 0}
+                                                            onClick={() => {
+                                                                if (mi === 0) return;
+                                                                const next = [...(form.models || [])];
+                                                                [next[mi - 1], next[mi]] = [next[mi], next[mi - 1]];
+                                                                setForm({ ...form, models: next });
+                                                            }}
+                                                            className="p-1.5 hover:bg-black/5 disabled:opacity-30 disabled:pointer-events-none text-[#1d1d1f]"
+                                                        >
+                                                            <ArrowUp size={14} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            title="Move down"
+                                                            disabled={mi >= (form.models || []).length - 1}
+                                                            onClick={() => {
+                                                                const arr = form.models || [];
+                                                                if (mi >= arr.length - 1) return;
+                                                                const next = [...arr];
+                                                                [next[mi], next[mi + 1]] = [next[mi + 1], next[mi]];
+                                                                setForm({ ...form, models: next });
+                                                            }}
+                                                            className="p-1.5 hover:bg-black/5 disabled:opacity-30 disabled:pointer-events-none text-[#1d1d1f] border-l border-black/10"
+                                                        >
+                                                            <ArrowDown size={14} />
+                                                        </button>
+                                                    </div>
+                                                    {(form.models || []).length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setForm({ ...form, models: (form.models || []).filter((_, j) => j !== mi) })}
+                                                            className="text-red-500 hover:text-red-700 text-xs"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             <input

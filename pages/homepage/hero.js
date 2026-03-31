@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
-import { getHero, updateHero, uploadImage } from "@/lib/api";
+import { getHero, updateHero, uploadImage, upload3DModel } from "@/lib/api";
 import { Plus, Trash2, X, Upload } from "lucide-react";
 import Head from "next/head";
 
@@ -8,6 +8,12 @@ const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7]
 
 // Predefined text color: liquid glass (clear, soft blue-gray)
 const LIQUID_GLASS_HEX = "#E5EAEF";
+
+const DEFAULT_HERO_3D_CONFIG = {
+    use3DModel: false,
+    modelUrl: "",
+    modelScale: 1,
+};
 
 export default function HeroPage() {
     const [loading, setLoading] = useState(true);
@@ -19,7 +25,10 @@ export default function HeroPage() {
     const [ctaButtonText, setCtaButtonText] = useState("");
     const [ctaButtonLink, setCtaButtonLink] = useState("");
     const [uploadingIndex, setUploadingIndex] = useState(null);
+    const [uploadingHeroModel, setUploadingHeroModel] = useState(false);
     const fileInputRef = useRef(null);
+    const heroModelInputRef = useRef(null);
+    const [heroConfig, setHeroConfig] = useState(() => ({ ...DEFAULT_HERO_3D_CONFIG }));
 
     const fetchData = async () => {
         setLoading(true);
@@ -33,6 +42,8 @@ export default function HeroPage() {
             setCtaSubtitle(cta.subtitle ?? d.ctaSubtitle ?? "");
             setCtaButtonText(cta.buttonText ?? d.ctaButtonText ?? "");
             setCtaButtonLink(cta.buttonLink ?? d.ctaButtonLink ?? "");
+            const cfg = d.config && typeof d.config === "object" ? d.config : {};
+            setHeroConfig({ ...DEFAULT_HERO_3D_CONFIG, ...cfg });
         } catch (e) {
             setError(e?.message || "Failed to load hero");
         } finally {
@@ -65,6 +76,30 @@ export default function HeroPage() {
         }
     };
 
+    const triggerHeroModelUpload = () => heroModelInputRef.current?.click();
+
+    const handleHeroModelFile = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        const lower = file.name.toLowerCase();
+        if (!lower.endsWith(".glb") && !lower.endsWith(".gltf")) {
+            alert("Please choose a .glb or .gltf file for the hero 3D model.");
+            return;
+        }
+        setUploadingHeroModel(true);
+        try {
+            const data = await upload3DModel(file);
+            const url = data.url || data.secure_url || data.fileUrl || "";
+            if (!url) throw new Error("No URL returned from upload");
+            setHeroConfig((c) => ({ ...c, modelUrl: url, use3DModel: true }));
+        } catch (err) {
+            alert(err.message || "3D upload failed");
+        } finally {
+            setUploadingHeroModel(false);
+        }
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         setSaving(true);
@@ -76,6 +111,15 @@ export default function HeroPage() {
                     subtitle: ctaSubtitle || undefined,
                     buttonText: ctaButtonText || undefined,
                     buttonLink: ctaButtonLink || undefined,
+                },
+                config: {
+                    ...heroConfig,
+                    use3DModel: !!heroConfig.use3DModel,
+                    modelUrl: String(heroConfig.modelUrl || "").trim(),
+                    modelScale:
+                        typeof heroConfig.modelScale === "number" && !Number.isNaN(heroConfig.modelScale)
+                            ? heroConfig.modelScale
+                            : 1,
                 },
             });
             alert("Hero saved.");
@@ -100,7 +144,9 @@ export default function HeroPage() {
             <Head><title>Hero — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-6 fade-in max-w-2xl">
-                    <p className="text-sm text-[#6e6e73]">Top of homepage: up to 3 color variants. Each variant has an image and a text/dot color.</p>
+                    <p className="text-sm text-[#6e6e73]">
+                        Top of homepage: up to 3 color variants (images for 2D hero). Optionally enable a single GLB for the 3D hero — upload here or paste a URL after uploading elsewhere.
+                    </p>
                     {error && (
                         <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center justify-between">
                             <p className="text-sm text-red-700">{error}</p>
@@ -122,6 +168,13 @@ export default function HeroPage() {
                                 accept="image/*"
                                 className="hidden"
                                 onChange={handleFileChange}
+                            />
+                            <input
+                                ref={heroModelInputRef}
+                                type="file"
+                                accept=".glb,.gltf,model/gltf-binary,model/gltf+json,application/octet-stream"
+                                className="hidden"
+                                onChange={handleHeroModelFile}
                             />
                             <div className="space-y-3">
                                 {colors.map((c, i) => (
@@ -170,6 +223,63 @@ export default function HeroPage() {
                                 ))}
                             </div>
                         </div>
+                        <div className="space-y-3 pt-4 border-t border-black/5">
+                            <h3 className="text-sm font-semibold text-[#1d1d1f]">Hero 3D model (GLB / GLTF)</h3>
+                            <p className="text-xs text-[#6e6e73]">
+                                When enabled, the storefront shows this model instead of the variant images. Color dots still control background text color.
+                            </p>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    className="rounded border-black/20"
+                                    checked={!!heroConfig.use3DModel}
+                                    onChange={(e) => setHeroConfig((c) => ({ ...c, use3DModel: e.target.checked }))}
+                                />
+                                <span className="text-sm text-[#1d1d1f]">Use uploaded 3D model in hero</span>
+                            </label>
+                            <div>
+                                <label className="block text-sm text-[#6e6e73] mb-1">Model URL (S3/CDN)</label>
+                                <input
+                                    className={INPUT}
+                                    placeholder="https://…/model.glb"
+                                    value={heroConfig.modelUrl ?? ""}
+                                    onChange={(e) => setHeroConfig((c) => ({ ...c, modelUrl: e.target.value }))}
+                                />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <label className="text-sm text-[#6e6e73] shrink-0">Scale</label>
+                                <input
+                                    type="number"
+                                    step="0.05"
+                                    min="0.1"
+                                    max="10"
+                                    className={`${INPUT} w-28`}
+                                    value={heroConfig.modelScale ?? 1}
+                                    onChange={(e) => {
+                                        const v = parseFloat(e.target.value, 10);
+                                        setHeroConfig((c) => ({ ...c, modelScale: Number.isFinite(v) ? v : 1 }));
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={triggerHeroModelUpload}
+                                    disabled={uploadingHeroModel}
+                                    className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-sm font-medium text-[#1d1d1f] hover:bg-black/5 disabled:opacity-50"
+                                >
+                                    {uploadingHeroModel ? (
+                                        <span className="flex items-center gap-1.5">
+                                            <span className="inline-block w-4 h-4 border-2 border-[#1d1d1f] border-t-transparent rounded-full animate-spin" />
+                                            Uploading…
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <Upload size={16} /> Upload .glb / .gltf
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
                         <div className="space-y-3 pt-4 border-t border-black/5">
                             <h3 className="text-sm font-semibold text-[#1d1d1f]">CTA panel (scroll-reveal)</h3>
                             <div>
