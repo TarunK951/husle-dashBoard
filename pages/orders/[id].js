@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Layout from "@/components/Layout";
-import { getOrder, trackAdminOrder } from "@/lib/api";
+import { getOrder, trackAdminOrder, adminCancelOrder } from "@/lib/api";
+import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 import {
     ChevronLeft, Package, MapPin, CreditCard, Banknote,
     Truck, CheckCircle2, Clock, ExternalLink, RefreshCw,
@@ -58,6 +59,12 @@ export default function OrderDetailPage() {
     const [loading, setLoading] = useState(true);
     const [trackLoading, setTrackLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [cancelLoading, setCancelLoading] = useState(false);
+    const [dashUser, setDashUser] = useState(null);
+    useEffect(() => {
+        setDashUser(getDashboardUser());
+    }, []);
+    const canWriteOrders = canWriteSection(dashUser, "orders");
 
     useEffect(() => {
         if (!id) return;
@@ -135,6 +142,24 @@ export default function OrderDetailPage() {
 
     // Order fulfilment status — strip "paid" (payment concept) from fulfilment display
     const fulfilmentStatus = order.status === "paid" ? "processing" : order.status;
+    const canCancel = !["delivered", "cancelled"].includes(order.status);
+
+    const handleCancelOrder = async () => {
+        if (!canCancel || !id) return;
+        const reason = typeof window !== "undefined" ? window.prompt("Cancel reason (optional):", "") : "";
+        if (reason === null) return;
+        if (!window.confirm("Cancel this order? If paid online, a refund will be initiated.")) return;
+        setCancelLoading(true);
+        try {
+            await adminCancelOrder(id, { reason: reason || undefined });
+            const refreshed = await getOrder(id);
+            setOrder(refreshed);
+        } catch (e) {
+            alert(e?.message || "Cancel failed");
+        } finally {
+            setCancelLoading(false);
+        }
+    };
 
     return (
         <>
@@ -157,6 +182,16 @@ export default function OrderDetailPage() {
                             <p className="text-sm text-[#6e6e73] mt-1">{formatDateTime(order.createdAt)}</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
+                            {canCancel && canWriteOrders && (
+                                <button
+                                    type="button"
+                                    onClick={handleCancelOrder}
+                                    disabled={cancelLoading}
+                                    className="px-4 py-2 rounded-xl text-sm font-semibold border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                                >
+                                    {cancelLoading ? "Cancelling…" : "Cancel order"}
+                                </button>
+                            )}
                             {/* Order fulfilment status */}
                             <div className="flex flex-col items-end gap-0.5">
                                 <span className="text-[10px] font-semibold text-[#86868b] uppercase tracking-wide">Order</span>

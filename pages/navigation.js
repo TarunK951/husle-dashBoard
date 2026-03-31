@@ -18,18 +18,32 @@ const DEFAULT_ITEMS = [
   { label: "Combos", href: "/products", hasDropdown: true, dropdown: { title: "Combos", layout: "row", items: [], featured: null } },
 ];
 
-function hrefToCategoryId(href) {
+function hrefToCategoryId(href, categories = []) {
   if (!href || typeof href !== "string") return "";
   try {
     const u = new URL(href, "http://x");
-    return u.searchParams.get("categoryId") || u.searchParams.get("category") || "";
+    const byId = u.searchParams.get("categoryId");
+    if (byId) return String(byId).trim();
+    const cat = u.searchParams.get("category");
+    if (cat == null || cat === "") return "";
+    const decoded = decodeURIComponent(cat).trim();
+    if (/^\d+$/.test(decoded)) return decoded;
+    const bySlug = categories.find((c) => c.slug && String(c.slug).toLowerCase() === decoded.toLowerCase());
+    if (bySlug) return String(bySlug.id);
+    const byName = categories.find((c) => c.name && c.name.toLowerCase() === decoded.toLowerCase());
+    if (byName) return String(byName.id);
+    return "";
   } catch {
     return "";
   }
 }
 
-function categoryIdToHref(categoryId) {
-  return categoryId ? `/products?categoryId=${categoryId}` : "/products";
+/** Storefront reads ?category=slug (or categoryId). Prefer slug for cleaner links. */
+function categoryIdToHref(categoryId, categories = []) {
+  if (!categoryId) return "/products";
+  const cat = categories.find((c) => String(c.id) === String(categoryId));
+  if (cat?.slug) return `/products?category=${encodeURIComponent(cat.slug)}`;
+  return `/products?categoryId=${categoryId}`;
 }
 
 export default function NavigationPage() {
@@ -65,7 +79,7 @@ export default function NavigationPage() {
       const raw = Array.isArray(navRes.items) ? navRes.items : [];
       const mapItem = (item, idx) => {
         const dropdownItems = (item.dropdown?.items || []).slice(0, MAX_DROPDOWN_ITEMS).map((di) => {
-          const cid = hrefToCategoryId(di.href);
+          const cid = hrefToCategoryId(di.href, categoriesList);
           const categoryName = di.categoryName ?? (cid ? (categoriesList.find((c) => String(c.id) === cid)?.name ?? "") : "");
           return { ...di, categoryName };
         });
@@ -189,7 +203,7 @@ export default function NavigationPage() {
     );
 
   const setDropdownItemCategory = (navIndex, itemIndex, categoryId, categoryName) => {
-    updateDropdownItem(navIndex, itemIndex, "href", categoryIdToHref(categoryId));
+    updateDropdownItem(navIndex, itemIndex, "href", categoryIdToHref(categoryId, categories));
     updateDropdownItem(navIndex, itemIndex, "categoryName", categoryName ?? "");
   };
 
@@ -252,6 +266,13 @@ export default function NavigationPage() {
             </h2>
             <p className="text-sm text-[#6e6e73]">
               Three fixed items: Products, Accessories, Combos (link /products). You can add one more with your own label. Click chevron to expand/collapse dropdown.
+              Dropdown category picks generate filtered URLs like{" "}
+              <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">/products?category=your-category-slug</code>
+              . You can also set a custom path on the 4th link using query args:{" "}
+              <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">brand</code>,{" "}
+              <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">sort</code>,{" "}
+              <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">q</code>,{" "}
+              <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">offers=1</code>, etc.
             </p>
           </div>
 
@@ -368,7 +389,7 @@ export default function NavigationPage() {
                               </label>
                               <select
                                 className={INPUT}
-                                value={hrefToCategoryId(di.href) || ""}
+                                value={hrefToCategoryId(di.href, categories) || ""}
                                 onChange={(e) => {
                                   const categoryId = e.target.value;
                                   const cat = categories.find(

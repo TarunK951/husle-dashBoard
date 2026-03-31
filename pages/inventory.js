@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Layout from "@/components/Layout";
+import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 import { getProducts, getProduct, updateProduct } from "@/lib/api";
 import {
     Warehouse,
@@ -247,6 +248,11 @@ export default function InventoryPage() {
     const [savingKey, setSavingKey] = useState(null);
     const [savingProductId, setSavingProductId] = useState(null);
     const searchDebounceBoot = useRef(true);
+    const [dashUser, setDashUser] = useState(null);
+    useEffect(() => {
+        setDashUser(getDashboardUser());
+    }, []);
+    const canWriteProducts = canWriteSection(dashUser, "products");
 
     const fetchProducts = useCallback(async () => {
         setLoading(true);
@@ -297,6 +303,7 @@ export default function InventoryPage() {
     };
 
     async function saveLine(line) {
+        if (!canWriteProducts) return;
         const { productId, kind } = line;
         const key = line.key;
         const rawVal = getDraftOr(key, line.stock);
@@ -346,6 +353,7 @@ export default function InventoryPage() {
     }
 
     async function saveAllForProduct(productId) {
+        if (!canWriteProducts) return;
         const row = rows.find((r) => String(r.product.id) === String(productId));
         if (!row) return;
         const lines = [...row.modelLines, ...row.variantLines];
@@ -398,6 +406,11 @@ export default function InventoryPage() {
             </Head>
             <Layout>
                 <div className="space-y-5 fade-in max-w-6xl">
+                    {dashUser?.role === "staff" && !canWriteProducts && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <strong className="font-semibold">View only.</strong> Stock quantities cannot be changed without Edit access on Products.
+                        </div>
+                    )}
                     <div className="flex flex-wrap gap-3 items-start justify-between">
                         <div>
                             <h1 className="text-xl font-bold text-[#1d1d1f] flex items-center gap-2">
@@ -522,6 +535,7 @@ export default function InventoryPage() {
                                                                                     <input
                                                                                         type="number"
                                                                                         min={0}
+                                                                                        readOnly={!canWriteProducts}
                                                                                         className={`${INPUT} inline-block`}
                                                                                         value={getDraftOr(line.key, line.stock)}
                                                                                         onChange={(e) => setDraftVal(line.key, e.target.value)}
@@ -531,7 +545,7 @@ export default function InventoryPage() {
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => saveLine(line)}
-                                                                                        disabled={savingKey === line.key}
+                                                                                        disabled={!canWriteProducts || savingKey === line.key}
                                                                                         className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-lg bg-[#1d1d1f] text-white hover:bg-black disabled:opacity-50"
                                                                                     >
                                                                                         {savingKey === line.key ? (
@@ -575,6 +589,7 @@ export default function InventoryPage() {
                                                                                     <input
                                                                                         type="number"
                                                                                         min={0}
+                                                                                        readOnly={!canWriteProducts}
                                                                                         className={`${INPUT} inline-block`}
                                                                                         value={getDraftOr(line.key, line.stock)}
                                                                                         onChange={(e) => setDraftVal(line.key, e.target.value)}
@@ -584,7 +599,7 @@ export default function InventoryPage() {
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => saveLine(line)}
-                                                                                        disabled={savingKey === line.key}
+                                                                                        disabled={!canWriteProducts || savingKey === line.key}
                                                                                         className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1.5 rounded-lg bg-[#1d1d1f] text-white hover:bg-black disabled:opacity-50"
                                                                                     >
                                                                                         {savingKey === line.key ? (
@@ -607,7 +622,7 @@ export default function InventoryPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() => saveAllForProduct(p.id)}
-                                                                disabled={savingProductId === p.id}
+                                                                disabled={!canWriteProducts || savingProductId === p.id}
                                                                 className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl border border-black/10 bg-white hover:bg-black/[0.03] disabled:opacity-50"
                                                             >
                                                                 {savingProductId === p.id ? (

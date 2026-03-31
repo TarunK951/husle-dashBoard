@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Head from "next/head";
 import Layout from "@/components/Layout";
+import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 import { getAdminReviews, patchReviewsVisibility } from "@/lib/api";
 import { Star, ChevronLeft, ChevronRight, Save, Eye, EyeOff } from "lucide-react";
 
@@ -17,6 +18,13 @@ export default function AdminReviewsPage() {
     const [search, setSearch] = useState("");
     const [appliedProductId, setAppliedProductId] = useState("");
     const [appliedSearch, setAppliedSearch] = useState("");
+    const [dashUser, setDashUser] = useState(null);
+
+    useEffect(() => {
+        setDashUser(getDashboardUser());
+    }, []);
+
+    const canWriteReviews = canWriteSection(dashUser, "reviews");
 
     const fetchReviews = useCallback(async () => {
         setLoading(true);
@@ -57,21 +65,24 @@ export default function AdminReviewsPage() {
     );
 
     const selectAllOnPage = () => {
+        if (!canWriteReviews) return;
         setReviews((prev) => prev.map((r) => ({ ...r, showOnStorefront: true })));
     };
 
     const clearAllOnPage = () => {
+        if (!canWriteReviews) return;
         setReviews((prev) => prev.map((r) => ({ ...r, showOnStorefront: false })));
     };
 
     const toggleOne = (id) => {
+        if (!canWriteReviews) return;
         setReviews((prev) =>
             prev.map((r) => (r.id === id ? { ...r, showOnStorefront: !r.showOnStorefront } : r))
         );
     };
 
     const savePageVisibility = async () => {
-        if (reviews.length === 0) return;
+        if (!canWriteReviews || reviews.length === 0) return;
         setSaving(true);
         setError(null);
         setSaveOk(null);
@@ -103,6 +114,13 @@ export default function AdminReviewsPage() {
                             </p>
                         </div>
                     </div>
+
+                    {dashUser?.role === "staff" && !canWriteReviews && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <strong className="font-semibold">View only.</strong> You can browse reviews but cannot change
+                            visibility on the storefront.
+                        </div>
+                    )}
 
                     <div className="flex flex-wrap gap-3 items-end">
                         <div>
@@ -139,7 +157,7 @@ export default function AdminReviewsPage() {
                         <button
                             type="button"
                             onClick={selectAllOnPage}
-                            disabled={loading || reviews.length === 0}
+                            disabled={!canWriteReviews || loading || reviews.length === 0}
                             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] disabled:opacity-40"
                         >
                             <Eye size={16} /> Select all on page
@@ -147,7 +165,7 @@ export default function AdminReviewsPage() {
                         <button
                             type="button"
                             onClick={clearAllOnPage}
-                            disabled={loading || reviews.length === 0}
+                            disabled={!canWriteReviews || loading || reviews.length === 0}
                             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] disabled:opacity-40"
                         >
                             <EyeOff size={16} /> Unselect all on page
@@ -155,7 +173,7 @@ export default function AdminReviewsPage() {
                         <button
                             type="button"
                             onClick={savePageVisibility}
-                            disabled={saving || loading || reviews.length === 0}
+                            disabled={!canWriteReviews || saving || loading || reviews.length === 0}
                             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-40"
                         >
                             <Save size={16} /> Save this page
@@ -199,6 +217,7 @@ export default function AdminReviewsPage() {
                                                     type="checkbox"
                                                     className="rounded border-black/20"
                                                     checked={allVisibleOnPage}
+                                                    disabled={!canWriteReviews}
                                                     onChange={(e) => (e.target.checked ? selectAllOnPage() : clearAllOnPage())}
                                                     title="Select or unselect all on this page"
                                                 />
@@ -218,6 +237,7 @@ export default function AdminReviewsPage() {
                                                         type="checkbox"
                                                         className="rounded border-black/20"
                                                         checked={!!r.showOnStorefront}
+                                                        disabled={!canWriteReviews}
                                                         onChange={() => toggleOne(r.id)}
                                                         aria-label={`Show review ${r.id} on site`}
                                                     />

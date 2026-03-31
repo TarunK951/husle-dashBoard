@@ -33,6 +33,7 @@ import {
     Layers,
 } from "lucide-react";
 import Head from "next/head";
+import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 
 const Product3DViewer = dynamic(() => import("@/components/Product3DViewer"), { ssr: false });
 
@@ -153,11 +154,13 @@ function normalizeModelForPayload(m, modelIndex = 0) {
             const color = String(c?.color || "").trim();
             const colorCode = String(c?.colorCode || "").trim();
             const stock = Number(c?.stock ?? 0);
+            const images = Array.isArray(c?.images) ? c.images.filter(Boolean) : [];
             return {
                 ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
                 color,
                 ...(colorCode ? { colorCode } : {}),
                 stock: Number.isFinite(stock) ? stock : 0,
+                images,
             };
         })
         .filter((c) => c.color);
@@ -177,7 +180,10 @@ function hasModelContent(m) {
         (m?.name && String(m.name).trim()) ||
         (Array.isArray(m?.images) && m.images.length > 0) ||
         (Array.isArray(m?.models3d) && m.models3d.length > 0) ||
-        (Array.isArray(m?.colors) && m.colors.some((c) => c?.color && String(c.color).trim())) ||
+        (Array.isArray(m?.colors) && m.colors.some((c) =>
+            (c?.color && String(c.color).trim()) ||
+            (Array.isArray(c?.images) && c.images.length > 0),
+        )) ||
         (m?.id != null && m.id !== "")
     );
 }
@@ -451,7 +457,7 @@ const emptyProduct = {
     models3d: [],
     model3dView360: false,
     variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
-    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
+    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
     featured: false,
     limited: false,
     offer: false,
@@ -479,6 +485,11 @@ export default function ProductsPage() {
     const [formError, setFormError] = useState(null);
     const [brandDropOpen, setBrandDropOpen] = useState(false);
     const brandInputRef = useRef(null);
+    const [dashUser, setDashUser] = useState(null);
+    useEffect(() => {
+        setDashUser(getDashboardUser());
+    }, []);
+    const canWriteProducts = canWriteSection(dashUser, "products");
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -521,6 +532,7 @@ export default function ProductsPage() {
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
     const openCreate = () => {
+        if (!canWriteProducts) return;
         setForm(emptyProduct);
         setFormError(null);
         setModal("create");
@@ -530,6 +542,7 @@ export default function ProductsPage() {
         }).catch(() => setBundleProductList([]));
     };
     const openEdit = (p) => {
+        if (!canWriteProducts) return;
         setFormError(null);
         const product = normalizeProductFromApi(p);
         setEditTarget(product);
@@ -569,16 +582,24 @@ export default function ProductsPage() {
                     colors: Array.isArray(m.colors) && m.colors.length > 0
                         ? [...m.colors]
                             .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
-                            .map((c) => ({ id: c.id ?? null, color: c.color || "", colorCode: c.colorCode || "", stock: c.stock ?? 0 }))
-                        : [{ id: null, color: "", colorCode: "", stock: 0 }],
+                            .map((c) => ({
+                                id: c.id ?? null,
+                                color: c.color || "",
+                                colorCode: c.colorCode || "",
+                                stock: c.stock ?? 0,
+                                images: Array.isArray(c.images) ? c.images : [],
+                            }))
+                        : [{ id: null, color: "", colorCode: "", stock: 0, images: [] }],
                 }))
-                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
+                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
             featured: !!product.featured,
             limited: !!product.limited,
             offer: !!product.offer,
             discount: (product.discountPercent ?? product.discount) != null ? String(product.discountPercent ?? product.discount) : "",
             isBundle: !!product.isBundle,
-            bundleProductIds: Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []),
+            bundleProductIds: (Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []))
+                .map((id) => Number(id))
+                .filter((id) => !Number.isNaN(id)),
             screenGuardOptions: Array.isArray(product.screenGuardOptions) ? product.screenGuardOptions : [],
         });
         setModal("edit");
@@ -590,6 +611,7 @@ export default function ProductsPage() {
 
     const handleSave = async (e) => {
         e.preventDefault();
+        if (!canWriteProducts) return;
         setFormError(null);
         const categoryIdNum = Number(form.categoryId);
         const validCategoryIds = (rootCategories || []).map((c) => Number(c.id)).filter((id) => id > 0);
@@ -659,11 +681,21 @@ export default function ProductsPage() {
                 discount: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
                 discountPercent: form.offer && form.discount !== "" ? Number(form.discount) : undefined,
                 isBundle: !!form.isBundle,
-                bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds) ? form.bundleProductIds.filter((id) => id) : undefined,
+                bundleProductIds: form.isBundle && Array.isArray(form.bundleProductIds)
+                    ? form.bundleProductIds.map((id) => Number(id)).filter((n) => !Number.isNaN(n))
+                    : undefined,
+                screenGuardOptions: Array.isArray(form.screenGuardOptions)
+                    ? form.screenGuardOptions.map((o) => ({
+                        label: String(o?.label || "").trim(),
+                        value: String((o?.value ?? o?.label) || "").trim(),
+                        ...(o?.price !== undefined && o?.price !== "" && !Number.isNaN(Number(o.price))
+                            ? { price: Number(o.price) }
+                            : {}),
+                    }))
+                    : [],
                 ...(deletedVariantIds.length > 0 ? { deletedVariantIds } : {}),
                 ...(deletedModelIds.length > 0 ? { deletedModelIds } : {}),
                 ...(deletedColorIds.length > 0 ? { deletedColorIds } : {}),
-                screenGuardOptions: Array.isArray(form.screenGuardOptions) ? form.screenGuardOptions : [],
             };
             if (modal === "create") {
                 await createProduct(payload);
@@ -682,6 +714,7 @@ export default function ProductsPage() {
     };
 
     const handleDelete = async (id) => {
+        if (!canWriteProducts) return;
         if (!confirm("Delete this product?")) return;
         try {
             await deleteProduct(id);
@@ -702,6 +735,11 @@ export default function ProductsPage() {
             <Head><title>Products — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-4 fade-in">
+                    {dashUser?.role === "staff" && !canWriteProducts && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <strong className="font-semibold">View only.</strong> You can browse products but cannot add, edit, or delete them.
+                        </div>
+                    )}
                     <div className="flex flex-wrap gap-3 items-center justify-between">
                         <h1 className="text-lg font-semibold text-[#1d1d1f]">Products</h1>
                         <div className="flex flex-wrap gap-2 items-center">
@@ -713,9 +751,11 @@ export default function ProductsPage() {
                                 <option value="">All categories</option>
                                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
-                            <button onClick={openCreate} className="flex items-center gap-2 bg-[#1d1d1f] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-black">
-                                <Plus size={14} /> Add product
-                            </button>
+                            {canWriteProducts && (
+                                <button type="button" onClick={openCreate} className="flex items-center gap-2 bg-[#1d1d1f] text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-black">
+                                    <Plus size={14} /> Add product
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -789,10 +829,14 @@ export default function ProductsPage() {
                                                         {variantCount > 0 && <span className="text-xs text-[#6e6e73]">{variantCount} variant{variantCount !== 1 ? "s" : ""}</span>}
                                                     </td>
                                                     <td className="px-4 py-2.5">
-                                                        <div className="flex items-center gap-1">
-                                                            <button onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73] hover:text-[#1d1d1f]" title="Edit"><Pencil size={14} /></button>
-                                                            <button onClick={() => handleDelete(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
-                                                        </div>
+                                                        {canWriteProducts ? (
+                                                            <div className="flex items-center gap-1">
+                                                                <button type="button" onClick={() => openEdit(row)} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73] hover:text-[#1d1d1f]" title="Edit"><Pencil size={14} /></button>
+                                                                <button type="button" onClick={() => handleDelete(row.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-[#86868b]">—</span>
+                                                        )}
                                                     </td>
                                                 </tr>
                                             );
@@ -981,11 +1025,13 @@ export default function ProductsPage() {
                                 <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
                                 {form.isBundle && (
                                     <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5">
-                                        {bundleProductList.filter((p) => p.id !== editTarget?.id).map((prod) => {
-                                            const checked = (form.bundleProductIds || []).includes(prod.id);
+                                        {bundleProductList.filter((p) => Number(p.id) !== Number(editTarget?.id)).map((prod) => {
+                                            const pid = Number(prod.id);
+                                            const ids = (form.bundleProductIds || []).map((x) => Number(x));
+                                            const checked = ids.includes(pid);
                                             return (
                                                 <label key={prod.id} className="flex items-center gap-2 cursor-pointer text-sm">
-                                                    <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...(form.bundleProductIds || []), prod.id] : (form.bundleProductIds || []).filter((i) => i !== prod.id) })} className="rounded" />
+                                                    <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...ids.filter((x) => x !== pid), pid] : ids.filter((x) => x !== pid) })} className="rounded" />
                                                     <span className="truncate">{prod.name}</span>
                                                     <span className="text-xs text-[#6e6e73]">₹{prod.price}</span>
                                                 </label>
@@ -999,7 +1045,7 @@ export default function ProductsPage() {
                                             <span className="text-xs font-medium text-[#6e6e73]">Screen guard options (single-choice)</span>
                                             <button
                                                 type="button"
-                                                onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "" }] })}
+                                                onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "", price: "" }] })}
                                                 className="text-xs font-medium text-[#1d1d1f] hover:underline"
                                             >
                                                 + Option
@@ -1010,9 +1056,9 @@ export default function ProductsPage() {
                                         ) : (
                                             <div className="space-y-1.5">
                                                 {(form.screenGuardOptions || []).map((opt, i) => (
-                                                    <div key={i} className="flex items-center gap-2">
+                                                    <div key={i} className="flex flex-wrap items-center gap-2">
                                                         <input
-                                                            className={`${INPUT} py-1.5 text-xs flex-1`}
+                                                            className={`${INPUT} py-1.5 text-xs flex-1 min-w-[120px]`}
                                                             placeholder="Label (HD screen guard)"
                                                             value={opt?.label || ""}
                                                             onChange={(e) => {
@@ -1022,12 +1068,25 @@ export default function ProductsPage() {
                                                             }}
                                                         />
                                                         <input
-                                                            className={`${INPUT} py-1.5 text-xs w-40`}
+                                                            className={`${INPUT} py-1.5 text-xs w-32`}
                                                             placeholder="Value (hd)"
                                                             value={opt?.value || ""}
                                                             onChange={(e) => {
                                                                 const next = [...(form.screenGuardOptions || [])];
                                                                 next[i] = { ...next[i], value: e.target.value };
+                                                                setForm({ ...form, screenGuardOptions: next });
+                                                            }}
+                                                        />
+                                                        <input
+                                                            className={`${INPUT} py-1.5 text-xs w-24`}
+                                                            type="number"
+                                                            min="0"
+                                                            step="1"
+                                                            placeholder="Price ₹"
+                                                            value={opt?.price != null && opt?.price !== "" ? opt.price : ""}
+                                                            onChange={(e) => {
+                                                                const next = [...(form.screenGuardOptions || [])];
+                                                                next[i] = { ...next[i], price: e.target.value };
                                                                 setForm({ ...form, screenGuardOptions: next });
                                                             }}
                                                         />
@@ -1100,7 +1159,7 @@ export default function ProductsPage() {
                                             type="button"
                                             onClick={() => setForm({
                                                 ...form,
-                                                models: [...(form.models || []), { id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0 }] }],
+                                                models: [...(form.models || []), { id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
                                             })}
                                             className="text-xs font-medium px-2 py-1.5 rounded-lg bg-black/5 hover:bg-black/10 flex items-center gap-1"
                                         >
@@ -1168,7 +1227,7 @@ export default function ProductsPage() {
                                             />
 
                                             <ImageUploader
-                                                label="Model images (shared for all colors)"
+                                                label="Model images (store gallery when this model has no colors; add color rows below for per-color galleries)"
                                                 multiple
                                                 initialUrls={m.images || []}
                                                 onUploaded={(urls) => {
@@ -1211,7 +1270,7 @@ export default function ProductsPage() {
                                                         onClick={() => {
                                                             const next = [...(form.models || [])];
                                                             const colors = Array.isArray(next[mi]?.colors) ? next[mi].colors : [];
-                                                            next[mi] = { ...next[mi], colors: [...colors, { id: null, color: "", colorCode: "", stock: 0 }] };
+                                                            next[mi] = { ...next[mi], colors: [...colors, { id: null, color: "", colorCode: "", stock: 0, images: [] }] };
                                                             setForm({ ...form, models: next });
                                                         }}
                                                         className="text-xs font-medium text-[#1d1d1f] hover:underline"
@@ -1220,81 +1279,95 @@ export default function ProductsPage() {
                                                     </button>
                                                 </div>
                                                 {(m.colors || []).map((c, ci) => (
-                                                    <div key={ci} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                                                        <input
-                                                            className={`${INPUT} py-1.5 text-xs sm:col-span-4`}
-                                                            placeholder="Color (e.g. Black)"
-                                                            value={c.color || ""}
-                                                            onChange={(e) => {
+                                                    <div key={ci} className="rounded-lg border border-black/[0.06] p-2 space-y-2 bg-black/[0.02]">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs sm:col-span-4`}
+                                                                placeholder="Color (e.g. Black)"
+                                                                value={c.color || ""}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.models || [])];
+                                                                    const colors = [...(next[mi].colors || [])];
+                                                                    colors[ci] = { ...colors[ci], color: e.target.value };
+                                                                    next[mi] = { ...next[mi], colors };
+                                                                    setForm({ ...form, models: next });
+                                                                }}
+                                                            />
+                                                            <div className="flex items-center gap-2 sm:col-span-4 min-w-0">
+                                                                <input
+                                                                    type="color"
+                                                                    title="Pick color — fills hex code"
+                                                                    className="h-9 w-11 shrink-0 rounded-lg border border-black/10 cursor-pointer bg-white p-0.5"
+                                                                    value={hexForColorPicker(c.colorCode)}
+                                                                    onChange={(e) => {
+                                                                        const next = [...(form.models || [])];
+                                                                        const colors = [...(next[mi].colors || [])];
+                                                                        colors[ci] = {
+                                                                            ...colors[ci],
+                                                                            colorCode: e.target.value.toLowerCase(),
+                                                                        };
+                                                                        next[mi] = { ...next[mi], colors };
+                                                                        setForm({ ...form, models: next });
+                                                                    }}
+                                                                />
+                                                                <input
+                                                                    className={`${INPUT} py-1.5 text-xs flex-1 min-w-0 font-mono`}
+                                                                    placeholder="#000000"
+                                                                    value={c.colorCode || ""}
+                                                                    onChange={(e) => {
+                                                                        const next = [...(form.models || [])];
+                                                                        const colors = [...(next[mi].colors || [])];
+                                                                        colors[ci] = { ...colors[ci], colorCode: e.target.value };
+                                                                        next[mi] = { ...next[mi], colors };
+                                                                        setForm({ ...form, models: next });
+                                                                    }}
+                                                                    aria-label="Color hex code"
+                                                                />
+                                                            </div>
+                                                            <div className="flex items-center gap-2 sm:col-span-4 justify-end sm:justify-start">
+                                                                <input
+                                                                    className={`${INPUT} py-1.5 text-xs`}
+                                                                    type="number"
+                                                                    min="0"
+                                                                    placeholder="0"
+                                                                    value={c.stock ?? 0}
+                                                                    onChange={(e) => {
+                                                                        const next = [...(form.models || [])];
+                                                                        const colors = [...(next[mi].colors || [])];
+                                                                        colors[ci] = { ...colors[ci], stock: Number(e.target.value) };
+                                                                        next[mi] = { ...next[mi], colors };
+                                                                        setForm({ ...form, models: next });
+                                                                    }}
+                                                                />
+                                                                {(m.colors || []).length > 1 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const next = [...(form.models || [])];
+                                                                            const colors = (next[mi].colors || []).filter((_, j) => j !== ci);
+                                                                            next[mi] = { ...next[mi], colors };
+                                                                            setForm({ ...form, models: next });
+                                                                        }}
+                                                                        className="p-1.5 rounded hover:bg-red-50 text-red-500"
+                                                                        title="Remove color"
+                                                                    >
+                                                                        <X size={12} />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <ImageUploader
+                                                            label="Images for this color (shown on the store when this color is selected)"
+                                                            multiple
+                                                            initialUrls={c.images || []}
+                                                            onUploaded={(urls) => {
                                                                 const next = [...(form.models || [])];
                                                                 const colors = [...(next[mi].colors || [])];
-                                                                colors[ci] = { ...colors[ci], color: e.target.value };
+                                                                colors[ci] = { ...colors[ci], images: urls };
                                                                 next[mi] = { ...next[mi], colors };
                                                                 setForm({ ...form, models: next });
                                                             }}
                                                         />
-                                                        <div className="flex items-center gap-2 sm:col-span-4 min-w-0">
-                                                            <input
-                                                                type="color"
-                                                                title="Pick color — fills hex code"
-                                                                className="h-9 w-11 shrink-0 rounded-lg border border-black/10 cursor-pointer bg-white p-0.5"
-                                                                value={hexForColorPicker(c.colorCode)}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.models || [])];
-                                                                    const colors = [...(next[mi].colors || [])];
-                                                                    colors[ci] = {
-                                                                        ...colors[ci],
-                                                                        colorCode: e.target.value.toLowerCase(),
-                                                                    };
-                                                                    next[mi] = { ...next[mi], colors };
-                                                                    setForm({ ...form, models: next });
-                                                                }}
-                                                            />
-                                                            <input
-                                                                className={`${INPUT} py-1.5 text-xs flex-1 min-w-0 font-mono`}
-                                                                placeholder="#000000"
-                                                                value={c.colorCode || ""}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.models || [])];
-                                                                    const colors = [...(next[mi].colors || [])];
-                                                                    colors[ci] = { ...colors[ci], colorCode: e.target.value };
-                                                                    next[mi] = { ...next[mi], colors };
-                                                                    setForm({ ...form, models: next });
-                                                                }}
-                                                                aria-label="Color hex code"
-                                                            />
-                                                        </div>
-                                                        <div className="flex items-center gap-2 sm:col-span-4 justify-end sm:justify-start">
-                                                            <input
-                                                                className={`${INPUT} py-1.5 text-xs`}
-                                                                type="number"
-                                                                min="0"
-                                                                placeholder="0"
-                                                                value={c.stock ?? 0}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.models || [])];
-                                                                    const colors = [...(next[mi].colors || [])];
-                                                                    colors[ci] = { ...colors[ci], stock: Number(e.target.value) };
-                                                                    next[mi] = { ...next[mi], colors };
-                                                                    setForm({ ...form, models: next });
-                                                                }}
-                                                            />
-                                                            {(m.colors || []).length > 1 && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const next = [...(form.models || [])];
-                                                                        const colors = (next[mi].colors || []).filter((_, j) => j !== ci);
-                                                                        next[mi] = { ...next[mi], colors };
-                                                                        setForm({ ...form, models: next });
-                                                                    }}
-                                                                    className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                                                                    title="Remove color"
-                                                                >
-                                                                    <X size={12} />
-                                                                </button>
-                                                            )}
-                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
