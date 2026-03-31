@@ -20,8 +20,10 @@ import {
     Search,
     ShoppingCart,
     FolderTree,
+    Star,
     Image as ImageIcon,
     Settings,
+    Warehouse,
 } from "lucide-react";
 
 const HOMEPAGE_ITEMS = [
@@ -43,8 +45,10 @@ const SITEWIDE_ITEMS = [
     { href: "/navigation", icon: PanelTop, label: "Navigation (Navbar)" },
     { href: "/search-config", icon: Search, label: "Search config" },
     { href: "/products", icon: Package, label: "Products" },
+    { href: "/inventory", icon: Warehouse, label: "Inventory" },
     { href: "/categories", icon: FolderTree, label: "Categories" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
+    { href: "/reviews", icon: Star, label: "Product reviews" },
     { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
