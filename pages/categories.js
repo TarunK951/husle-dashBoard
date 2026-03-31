@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import Layout from "@/components/Layout";
+import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 import { getCategories, createCategory, updateCategory, deleteCategory, uploadImage } from "@/lib/api";
 import { Plus, Trash2, X, Save, Undo2, Pencil, Upload } from "lucide-react";
 import Head from "next/head";
@@ -17,6 +18,11 @@ export default function CategoriesPage() {
     const [lastAction, setLastAction] = useState(null);
     const [uploadingImage, setUploadingImage] = useState(false);
     const imageInputRef = useRef(null);
+    const [dashUser, setDashUser] = useState(null);
+    useEffect(() => {
+        setDashUser(getDashboardUser());
+    }, []);
+    const canWriteCategories = canWriteSection(dashUser, "categories");
 
     // Categories are flat (no nested groups / sub-types under a category).
     const rootCategories = categories.filter((c) => c.parentId == null || c.parentId === "");
@@ -37,6 +43,7 @@ export default function CategoriesPage() {
 
     const handleCreateOrUpdate = async (e) => {
         e.preventDefault();
+        if (!canWriteCategories) return;
         if (!form.name?.trim()) return;
         setSaving(true);
         setLastAction(null);
@@ -66,6 +73,7 @@ export default function CategoriesPage() {
     };
 
     const handleDelete = async (id) => {
+        if (!canWriteCategories) return;
         if (!confirm("Delete this category? Products in this category may be affected.")) return;
         const cat = categories.find((c) => c.id === id);
         if (!cat) return;
@@ -84,6 +92,7 @@ export default function CategoriesPage() {
     };
 
     const handleUndo = async () => {
+        if (!canWriteCategories) return;
         const action = lastAction;
         if (!action?.type) return;
         setSaving(true);
@@ -108,14 +117,21 @@ export default function CategoriesPage() {
             <Head><title>Categories — Hustle Admin</title></Head>
             <Layout>
                 <div className="space-y-5 fade-in max-w-4xl">
+                    {dashUser?.role === "staff" && !canWriteCategories && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            <strong className="font-semibold">View only.</strong> You cannot add, edit, or delete categories.
+                        </div>
+                    )}
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <h1 className="text-lg font-semibold text-[#1d1d1f]">Categories</h1>
                         <div className="flex items-center gap-2">
                             <button type="button" onClick={handleSave} disabled={loading} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5 hover:text-[#1d1d1f]" title="Refresh"><Save size={18} /></button>
-                            <button type="button" onClick={handleUndo} disabled={loading || saving || !lastAction} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5 hover:text-[#1d1d1f]" title="Undo"><Undo2 size={18} /></button>
-                            <button onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black">
-                                <Plus size={16} /> Add category
-                            </button>
+                            <button type="button" onClick={handleUndo} disabled={!canWriteCategories || loading || saving || !lastAction} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5 hover:text-[#1d1d1f]" title="Undo"><Undo2 size={18} /></button>
+                            {canWriteCategories && (
+                                <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black">
+                                    <Plus size={16} /> Add category
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -137,7 +153,9 @@ export default function CategoriesPage() {
                         ) : rootCategories.length === 0 ? (
                             <div className="px-4 py-10 text-center">
                                 <p className="text-sm text-[#6e6e73] mb-3">No categories yet.</p>
-                                <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Add category</button>
+                                {canWriteCategories && (
+                                    <button type="button" onClick={() => { setEditCategory(null); setForm({ name: "", image: "" }); setShowModal(true); setError(null); }} className="text-sm font-medium text-[#1d1d1f] underline hover:no-underline">Add category</button>
+                                )}
                             </div>
                         ) : (
                             <div className="divide-y divide-black/[0.06]">
@@ -147,8 +165,14 @@ export default function CategoriesPage() {
                                             <p className="font-medium text-[#1d1d1f] truncate">{c.name}</p>
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0">
-                                            <button type="button" onClick={() => { setEditCategory(c); setForm({ name: c.name || "", image: c.image || "" }); setShowModal(true); setError(null); }} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73]" title="Edit"><Pencil size={14} /></button>
-                                            <button type="button" onClick={() => handleDelete(c.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                                            {canWriteCategories ? (
+                                                <>
+                                                    <button type="button" onClick={() => { setEditCategory(c); setForm({ name: c.name || "", image: c.image || "" }); setShowModal(true); setError(null); }} className="p-1.5 rounded-md hover:bg-black/10 text-[#6e6e73]" title="Edit"><Pencil size={14} /></button>
+                                                    <button type="button" onClick={() => handleDelete(c.id)} className="p-1.5 rounded-md hover:bg-red-50 text-[#6e6e73] hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                                                </>
+                                            ) : (
+                                                <span className="text-xs text-[#86868b] px-1">—</span>
+                                            )}
                                         </div>
                                     </div>
                                 ))}

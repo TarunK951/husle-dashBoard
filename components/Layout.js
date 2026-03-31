@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/router";
+import { normalizePermLevel } from "@/lib/permissions";
 import {
     Package,
     MessageCircle,
@@ -24,7 +25,31 @@ import {
     Image as ImageIcon,
     Settings,
     Warehouse,
+    Users,
 } from "lucide-react";
+
+/** Staff dashboard: sidebar link if section is read or write (not none). */
+function staffCanSeeHref(href, perms) {
+    if (!perms || typeof perms !== "object") return false;
+    if (href.startsWith("/homepage")) return normalizePermLevel(perms.homepage) !== "none";
+    if (href.startsWith("/pages")) return normalizePermLevel(perms.pages) !== "none";
+    if (href === "/navigation") return normalizePermLevel(perms.navigation) !== "none";
+    if (href === "/search-config") return normalizePermLevel(perms.searchConfig) !== "none";
+    if (href === "/products" || href === "/inventory") return normalizePermLevel(perms.products) !== "none";
+    if (href === "/categories") return normalizePermLevel(perms.categories) !== "none";
+    if (href === "/orders") return normalizePermLevel(perms.orders) !== "none";
+    if (href === "/reviews") return normalizePermLevel(perms.reviews) !== "none";
+    if (href === "/settings") return normalizePermLevel(perms.settings) !== "none";
+    if (href === "/team") return false;
+    return false;
+}
+
+function filterNavItems(items, user) {
+    if (!user || user.role === "admin") return items;
+    if (user.role !== "staff") return items;
+    const perms = user.dashboardPermissions || {};
+    return items.filter((it) => staffCanSeeHref(it.href, perms));
+}
 
 const HOMEPAGE_ITEMS = [
     { href: "/homepage/hero", icon: ImageIcon, label: "Hero" },
@@ -52,8 +77,6 @@ const SITEWIDE_ITEMS = [
     { href: "/settings", icon: Settings, label: "Settings" },
 ];
 
-const ALL_NAV_ITEMS = [...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...SITEWIDE_ITEMS];
-
 export default function Layout({ children }) {
     const router = useRouter();
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -79,6 +102,20 @@ export default function Layout({ children }) {
             dateLabel = "";
         }
     }
+
+    const homepageNav = useMemo(() => filterNavItems(HOMEPAGE_ITEMS, user), [user]);
+    const pagesNav = useMemo(() => filterNavItems(PAGES_ITEMS, user), [user]);
+    const siteWideNav = useMemo(() => {
+        const base = [...SITEWIDE_ITEMS];
+        if (user?.role === "admin") {
+            base.splice(base.length - 1, 0, { href: "/team", icon: Users, label: "Team & access" });
+        }
+        return filterNavItems(base, user);
+    }, [user]);
+    const allNavItems = useMemo(
+        () => [...HOMEPAGE_ITEMS, ...PAGES_ITEMS, ...(user?.role === "admin" ? [{ href: "/team", icon: Users, label: "Team & access" }] : []), ...SITEWIDE_ITEMS],
+        [user],
+    );
 
     useEffect(() => {
         const token = localStorage.getItem("hustle_admin_token");
@@ -134,7 +171,7 @@ export default function Layout({ children }) {
                     {sidebarOpen && (
                         <p className="mx-3 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Homepage</p>
                     )}
-                    {HOMEPAGE_ITEMS.map(({ href, icon: Icon, label }) => {
+                    {homepageNav.map(({ href, icon: Icon, label }) => {
                         const active = router.pathname === href;
                         return (
                             <Link
@@ -156,7 +193,7 @@ export default function Layout({ children }) {
                     {sidebarOpen && (
                         <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Pages</p>
                     )}
-                    {PAGES_ITEMS.map(({ href, icon: Icon, label }) => {
+                    {pagesNav.map(({ href, icon: Icon, label }) => {
                         const active = router.pathname === href;
                         return (
                             <Link
@@ -178,7 +215,7 @@ export default function Layout({ children }) {
                     {sidebarOpen && (
                         <p className="mx-3 mt-4 mb-1 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/40">Site-wide</p>
                     )}
-                    {SITEWIDE_ITEMS.map(({ href, icon: Icon, label }) => {
+                    {siteWideNav.map(({ href, icon: Icon, label }) => {
                         const active = router.pathname === href;
                         return (
                             <Link
@@ -233,7 +270,7 @@ export default function Layout({ children }) {
                     </button>
                     <div>
                         <h1 className="font-bold text-[#1d1d1f] text-base leading-tight">
-                            {ALL_NAV_ITEMS.find((n) => n.href === router.pathname)?.label || "Dashboard"}
+                            {allNavItems.find((n) => n.href === router.pathname)?.label || "Dashboard"}
                         </h1>
                         <p className="text-xs text-[#6e6e73]" suppressHydrationWarning>
                             {dateLabel}

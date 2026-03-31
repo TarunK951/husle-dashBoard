@@ -19,8 +19,8 @@ export default function LoginPage() {
         setLoading(true);
         try {
             const data = await login(email, password);
-            if (data.user?.role !== "admin") {
-                setError("Access denied. Admin accounts only.");
+            if (data.user?.role !== "admin" && data.user?.role !== "staff") {
+                setError("Access denied. Admin or dashboard staff accounts only.");
                 setLoading(false);
                 return;
             }
