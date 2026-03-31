@@ -36,6 +36,17 @@ import Head from "next/head";
 
 const Product3DViewer = dynamic(() => import("@/components/Product3DViewer"), { ssr: false });
 
+/** Valid #rrggbb for native color input; falls back to #000000. */
+function hexForColorPicker(code) {
+    const s = String(code || "").trim();
+    if (/^#[0-9A-Fa-f]{6}$/i.test(s)) return s.toLowerCase();
+    if (/^#[0-9A-Fa-f]{3}$/i.test(s)) {
+        const x = s.slice(1);
+        return `#${x[0]}${x[0]}${x[1]}${x[1]}${x[2]}${x[2]}`.toLowerCase();
+    }
+    return "#000000";
+}
+
 // ─── 3-D format registry ──────────────────────────────────────────────────────
 const MODEL_FORMATS = [
     { ext: "glb",  label: "GLB",   mime: ".glb"  },
@@ -1209,9 +1220,9 @@ export default function ProductsPage() {
                                                     </button>
                                                 </div>
                                                 {(m.colors || []).map((c, ci) => (
-                                                    <div key={ci} className="grid grid-cols-6 gap-2 items-center">
+                                                    <div key={ci} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                                                         <input
-                                                            className={`${INPUT} py-1.5 text-xs col-span-3`}
+                                                            className={`${INPUT} py-1.5 text-xs sm:col-span-4`}
                                                             placeholder="Color (e.g. Black)"
                                                             value={c.color || ""}
                                                             onChange={(e) => {
@@ -1222,19 +1233,38 @@ export default function ProductsPage() {
                                                                 setForm({ ...form, models: next });
                                                             }}
                                                         />
-                                                        <input
-                                                            className={`${INPUT} py-1.5 text-xs col-span-2`}
-                                                            placeholder="#000000"
-                                                            value={c.colorCode || ""}
-                                                            onChange={(e) => {
-                                                                const next = [...(form.models || [])];
-                                                                const colors = [...(next[mi].colors || [])];
-                                                                colors[ci] = { ...colors[ci], colorCode: e.target.value };
-                                                                next[mi] = { ...next[mi], colors };
-                                                                setForm({ ...form, models: next });
-                                                            }}
-                                                        />
-                                                        <div className="flex items-center gap-2 col-span-1">
+                                                        <div className="flex items-center gap-2 sm:col-span-4 min-w-0">
+                                                            <input
+                                                                type="color"
+                                                                title="Pick color — fills hex code"
+                                                                className="h-9 w-11 shrink-0 rounded-lg border border-black/10 cursor-pointer bg-white p-0.5"
+                                                                value={hexForColorPicker(c.colorCode)}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.models || [])];
+                                                                    const colors = [...(next[mi].colors || [])];
+                                                                    colors[ci] = {
+                                                                        ...colors[ci],
+                                                                        colorCode: e.target.value.toLowerCase(),
+                                                                    };
+                                                                    next[mi] = { ...next[mi], colors };
+                                                                    setForm({ ...form, models: next });
+                                                                }}
+                                                            />
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs flex-1 min-w-0 font-mono`}
+                                                                placeholder="#000000"
+                                                                value={c.colorCode || ""}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.models || [])];
+                                                                    const colors = [...(next[mi].colors || [])];
+                                                                    colors[ci] = { ...colors[ci], colorCode: e.target.value };
+                                                                    next[mi] = { ...next[mi], colors };
+                                                                    setForm({ ...form, models: next });
+                                                                }}
+                                                                aria-label="Color hex code"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-2 sm:col-span-4 justify-end sm:justify-start">
                                                             <input
                                                                 className={`${INPUT} py-1.5 text-xs`}
                                                                 type="number"

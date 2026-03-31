@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import Head from "next/head";
 import Layout from "@/components/Layout";
 import { getStoreSettings, updateStoreSettings } from "@/lib/api";
-import { Settings, Truck, Store, Package, CheckCircle2, AlertCircle, Save } from "lucide-react";
+import { Settings, Truck, Store, Package, CheckCircle2, AlertCircle, Save, Wallet } from "lucide-react";
 
 function Card({ title, icon: Icon, children }) {
     return (
@@ -16,7 +16,24 @@ function Card({ title, icon: Icon, children }) {
     );
 }
 
-function Field({ label, hint, value, onChange, type = "text", prefix }) {
+function Field({ label, hint, value, onChange, type = "text", prefix, options }) {
+    if (options && Array.isArray(options)) {
+        return (
+            <div>
+                <label className="block text-xs font-semibold text-[#6e6e73] mb-1.5">{label}</label>
+                <select
+                    value={value ?? ""}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="h-10 px-3 text-sm font-medium text-[#1d1d1f] border border-black/10 bg-white outline-none focus:ring-2 focus:ring-[#1d1d1f]/10 focus:border-[#1d1d1f] transition-colors w-full rounded-xl"
+                >
+                    {options.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                </select>
+                {hint && <p className="mt-1 text-xs text-[#86868b]">{hint}</p>}
+            </div>
+        );
+    }
     return (
         <div>
             <label className="block text-xs font-semibold text-[#6e6e73] mb-1.5">{label}</label>
@@ -172,24 +189,112 @@ export default function SettingsPage() {
                     ) : (
                         <div className="space-y-5">
                             {GROUPS.map((group) => (
-                                <Card key={group.key} title={group.title} icon={group.icon}>
-                                    {group.description && (
-                                        <p className="text-xs text-[#86868b] -mt-1 mb-3 leading-relaxed">{group.description}</p>
+                                <Fragment key={group.key}>
+                                    <Card title={group.title} icon={group.icon}>
+                                        {group.description && (
+                                            <p className="text-xs text-[#86868b] -mt-1 mb-3 leading-relaxed">{group.description}</p>
+                                        )}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {group.fields.map((f) => (
+                                                <Field
+                                                    key={f.key}
+                                                    label={f.label}
+                                                    hint={f.hint}
+                                                    prefix={f.prefix}
+                                                    type={f.type || "text"}
+                                                    options={f.options}
+                                                    value={values[f.key] ?? ""}
+                                                    onChange={set(f.key)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </Card>
+                                    {group.key === "charges" && (
+                                        <Card title="Partial COD (online advance)" icon={Wallet}>
+                                            <p className="text-xs text-[#86868b] -mt-1 mb-3 leading-relaxed">
+                                                Order total = <strong>product</strong> (after coupon) + <strong>COD shipping fee</strong> (from Shipping Charges above). The <strong>advance</strong> is paid online (non-refundable); the <strong>balance</strong> is cash on delivery.
+                                            </p>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <Field
+                                                    label="Partial advance for COD"
+                                                    hint="Off = instant COD placement. On = Razorpay advance first."
+                                                    options={[
+                                                        { value: "0", label: "Off — place COD orders immediately" },
+                                                        { value: "1", label: "On — require online advance first" },
+                                                    ]}
+                                                    value={values.cod_partial_advance_enabled === "1" ? "1" : "0"}
+                                                    onChange={set("cod_partial_advance_enabled")}
+                                                />
+                                                <Field
+                                                    label="Advance vs product + COD"
+                                                    hint="What the % or fixed ₹ applies to (see below)."
+                                                    options={[
+                                                        { value: "order_total", label: "Percent/fixed vs full order (product + COD fee)" },
+                                                        { value: "product_subtotal", label: "Percent of product only (COD fee on delivery)" },
+                                                        { value: "cod_fee_online", label: "Pay full COD fee online; product on delivery" },
+                                                    ]}
+                                                    value={
+                                                        ["product_subtotal", "cod_fee_online"].includes(values.cod_partial_advance_basis)
+                                                            ? values.cod_partial_advance_basis
+                                                            : "order_total"
+                                                    }
+                                                    onChange={set("cod_partial_advance_basis")}
+                                                />
+                                            </div>
+                                            {values.cod_partial_advance_basis === "cod_fee_online" ? (
+                                                <p className="mt-4 text-xs text-[#6e6e73] max-w-xl leading-relaxed">
+                                                    No percentage/fixed needed: customers pay the <strong>entire COD shipping charge</strong> upfront; the <strong>product amount</strong> is due when the courier delivers.
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                                        <Field
+                                                            label="How the advance is calculated"
+                                                            hint="Pick one — the other amount field is hidden."
+                                                            options={[
+                                                                { value: "percentage", label: "Percentage" },
+                                                                { value: "fixed", label: "Fixed amount (₹)" },
+                                                            ]}
+                                                            value={
+                                                                values.cod_partial_advance_mode === "fixed"
+                                                                    ? "fixed"
+                                                                    : "percentage"
+                                                            }
+                                                            onChange={set("cod_partial_advance_mode")}
+                                                        />
+                                                    </div>
+                                                    {(values.cod_partial_advance_mode === "fixed" ? "fixed" : "percentage") === "percentage" ? (
+                                                        <div className="mt-4 max-w-md">
+                                                            <Field
+                                                                label="Advance (percentage)"
+                                                                hint={
+                                                                    values.cod_partial_advance_basis === "product_subtotal"
+                                                                        ? "e.g. 25 = 25% of product subtotal only (before COD fee)."
+                                                                        : "e.g. 25 = 25% of (product + COD shipping)."
+                                                                }
+                                                                type="number"
+                                                                prefix="%"
+                                                                value={values.cod_partial_advance_value_percentage ?? ""}
+                                                                onChange={set("cod_partial_advance_value_percentage")}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="mt-4 max-w-md">
+                                                            <Field
+                                                                label="Advance (fixed amount)"
+                                                                hint="Rupees charged online now; remainder (product + any unpaid fees) on delivery."
+                                                                type="number"
+                                                                prefix="₹"
+                                                                value={values.cod_partial_advance_value_fixed ?? ""}
+                                                                onChange={set("cod_partial_advance_value_fixed")}
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </Card>
                                     )}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {group.fields.map((f) => (
-                                            <Field
-                                                key={f.key}
-                                                label={f.label}
-                                                hint={f.hint}
-                                                prefix={f.prefix}
-                                                type={f.type || "text"}
-                                                value={values[f.key] ?? ""}
-                                                onChange={set(f.key)}
-                                            />
-                                        ))}
-                                    </div>
-                                </Card>
+                                </Fragment>
                             ))}
                         </div>
                     )}
