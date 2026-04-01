@@ -168,14 +168,16 @@ function normalizeModelForPayload(m, modelIndex = 0) {
             };
         })
         .filter((c) => c.color);
+    const hasColors = m?.hasColors !== undefined ? !!m.hasColors : true;
     return {
         ...(Number.isFinite(idNum) && idNum > 0 ? { id: idNum } : {}),
         name,
+        hasColors,
         images,
         models3d,
         model3dView360: !!m?.model3dView360,
         sortOrder,
-        colors: colorRows.map((c, cIdx) => ({ ...c, sortOrder: cIdx })),
+        colors: hasColors ? colorRows.map((c, cIdx) => ({ ...c, sortOrder: cIdx })) : [],
     };
 }
 
@@ -462,7 +464,7 @@ const emptyProduct = {
     models3d: [],
     model3dView360: false,
     variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
-    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
+    models: [{ id: null, name: "", hasColors: true, stock: 0, images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
     featured: false,
     limited: false,
     offer: false,
@@ -582,6 +584,7 @@ export default function ProductsPage() {
                 ? modelsSorted.map((m) => ({
                     id: m.id ?? null,
                     name: m.name || "",
+                    hasColors: m.hasColors ?? true,
                     images: Array.isArray(m.images) ? m.images : [],
                     models3d: Array.isArray(m.models3d) ? m.models3d.map((u) => ({ url: u, name: u.split("/").pop() || "", ext: "glb" })) : [],
                     model3dView360: !!m.model3dView360,
@@ -881,38 +884,6 @@ export default function ProductsPage() {
                                 </div>
                             )}
 
-                            {/* Media: Main Images & 3D */}
-                            <div className="space-y-4 pb-4 border-b border-black/[0.08]">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    <ImageUploader
-                                        label="Product thumbnail"
-                                        initialUrls={Array.isArray(form.images) ? form.images : (form.images ? [form.images] : [])}
-                                        onUploaded={(url) => setForm({ ...form, images: url })}
-                                    />
-                                    <ImageUploader
-                                        label="Gallery images (max 5)"
-                                        multiple
-                                        initialUrls={(form.gallery || []).map((g) => (typeof g === "string" ? g : g.url))}
-                                        onUploaded={(urls) => setForm({ ...form, gallery: urls.slice(0, 5).map((u) => ({ url: u, type: "image" })) })}
-                                    />
-                                </div>
-                                <div className="rounded-lg bg-violet-50/40 p-3 space-y-2">
-                                    <Model3DUploader
-                                        label="Product 3D Model"
-                                        initialModels={(form.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m)}
-                                        onUploaded={(models) => setForm({ ...form, models3d: models })}
-                                    />
-                                    <label className="flex items-center gap-2 cursor-pointer text-xs">
-                                        <input
-                                            type="checkbox"
-                                            checked={!!form.model3dView360}
-                                            onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
-                                            className="rounded"
-                                        />
-                                        360° view
-                                    </label>
-                                </div>
-                            </div>
 
                             {/* Basics */}
                             <div className="space-y-4">
@@ -1066,106 +1037,251 @@ export default function ProductsPage() {
                                         )}
                                     </div>
                                 )}
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.hasScreenOptions} onChange={(e) => setForm({ ...form, hasScreenOptions: e.target.checked, screenGuardOptions: e.target.checked ? (form.screenGuardOptions.length > 0 ? form.screenGuardOptions : [{ label: "", value: "", price: "" }]) : [] })} className="rounded border-[#6e6e73]" /><span>Screen Options</span></label>
-                                {form.isBundle && (
-                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5 border-l-2 border-black/5 ml-2">
-                                        {bundleProductList.filter((p) => Number(p.id) !== Number(editTarget?.id)).map((prod) => {
-                                            const pid = Number(prod.id);
-                                            const ids = (form.bundleProductIds || []).map((x) => Number(x));
-                                            const checked = ids.includes(pid);
-                                            return (
-                                                <label key={prod.id} className="flex items-center gap-2 cursor-pointer text-sm hover:text-black transition-colors">
-                                                    <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...ids.filter((x) => x !== pid), pid] : ids.filter((x) => x !== pid) })} className="rounded" />
-                                                    <span className="truncate">{prod.name}</span>
-                                                    <span className="text-xs text-[#6e6e73] whitespace-nowrap">₹{prod.price}</span>
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                                {form.hasScreenOptions && (
-                                    <div className="w-full mt-2 pl-5 border-l-2 border-violet-100 ml-2 py-2">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <div className="space-y-0.5">
-                                                <span className="text-xs font-semibold text-[#1d1d1f]">Screen Guard / Type Options</span>
-                                                <p className="text-[10px] text-[#6e6e73]">Add options that customers can pick for this product.</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "", price: "" }] })}
-                                                className="text-[11px] font-semibold text-violet-600 px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 transition-colors flex items-center gap-1"
-                                            >
-                                                <Plus size={12} /> Add Option
-                                            </button>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {(form.screenGuardOptions || []).map((opt, i) => (
-                                                <div key={i} className="group relative flex items-start gap-2 p-2 rounded-xl bg-black/[0.02] border border-black/[0.04] transition-all hover:border-black/10">
-                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
-                                                        <div className="space-y-1">
-                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Label</label>
-                                                            <input
-                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
-                                                                placeholder="e.g. HD Clear"
-                                                                value={opt?.label || ""}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.screenGuardOptions || [])];
-                                                                    next[i] = { ...next[i], label: e.target.value, value: next[i]?.value || e.target.value };
-                                                                    setForm({ ...form, screenGuardOptions: next });
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Slug/Value</label>
-                                                            <input
-                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
-                                                                placeholder="e.g. hd-clear"
-                                                                value={opt?.value || ""}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.screenGuardOptions || [])];
-                                                                    next[i] = { ...next[i], value: e.target.value };
-                                                                    setForm({ ...form, screenGuardOptions: next });
-                                                                }}
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Price Add-on (₹)</label>
-                                                            <input
-                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
-                                                                type="number"
-                                                                min="0"
-                                                                placeholder="0"
-                                                                value={opt?.price != null && opt?.price !== "" ? opt.price : ""}
-                                                                onChange={(e) => {
-                                                                    const next = [...(form.screenGuardOptions || [])];
-                                                                    next[i] = { ...next[i], price: e.target.value };
-                                                                    setForm({ ...form, screenGuardOptions: next });
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setForm({ ...form, screenGuardOptions: (form.screenGuardOptions || []).filter((_, j) => j !== i) })}
-                                                        className="mt-6 p-1.5 rounded-lg text-[#6e6e73] hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
-                                                        title="Remove option"
-                                                    >
-                                                        <X size={14} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            {(form.screenGuardOptions || []).length === 0 && (
-                                                <div className="py-4 text-center border-2 border-dashed border-black/5 rounded-xl">
-                                                    <p className="text-xs text-[#6e6e73]">Click "+ Add Option" to define screen types or variants.</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]">
 
-                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
+                                    <input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" />
+
+                                    <span>Bundle</span>
+
+                                </label>
+
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]">
+
+                                    <input type="checkbox" checked={!!form.hasScreenOptions} onChange={(e) => setForm({ ...form, hasScreenOptions: e.target.checked, screenGuardOptions: e.target.checked ? (form.screenGuardOptions.length > 0 ? form.screenGuardOptions : [{ label: "", value: "", price: "" }]) : [] })} className="rounded border-[#6e6e73]" />
+
+                                    <span>Screen Options</span>
+
+                                </label>
+
+                             </div>
+
+
+
+                             {/* Bundle — dedicated section */}
+
+                             {form.isBundle && (
+
+                                 <div className="rounded-lg border border-black/[0.08] overflow-hidden">
+
+                                     <div className="flex items-center justify-between px-3 py-2.5 bg-black/[0.02] border-b border-black/[0.06]">
+
+                                         <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
+
+                                             <Package size={16} className="text-[#6e6e73]" />
+
+                                             Bundle products
+
+                                         </span>
+
+                                         <span className="text-[11px] text-[#6e6e73]">{form.bundleProductIds?.length || 0} selected</span>
+
+                                     </div>
+
+                                     <div className="px-3 py-3 max-h-44 overflow-y-auto space-y-1">
+
+                                         {bundleProductList.filter((p) => Number(p.id) !== Number(editTarget?.id)).map((prod) => {
+
+                                             const pid = Number(prod.id);
+
+                                             const ids = (form.bundleProductIds || []).map((x) => Number(x));
+
+                                             const checked = ids.includes(pid);
+
+                                             return (
+
+                                                 <label key={prod.id} className="flex items-center gap-3 cursor-pointer text-sm py-1 px-2 rounded-lg hover:bg-black/[0.02] transition-colors">
+
+                                                     <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...ids.filter((x) => x !== pid), pid] : ids.filter((x) => x !== pid) })} className="rounded" />
+
+                                                     <span className="flex-1 truncate text-[#1d1d1f]">{prod.name}</span>
+
+                                                     <span className="text-xs text-[#6e6e73] whitespace-nowrap font-medium">₹{prod.price}</span>
+
+                                                 </label>
+
+                                             );
+
+                                         })}
+
+                                         {bundleProductList.length === 0 && (
+
+                                             <p className="text-xs text-[#6e6e73] text-center py-4">No other products found.</p>
+
+                                         )}
+
+                                     </div>
+
+                                 </div>
+
+                             )}
+
+
+
+                             {/* Screen Options — dedicated section */}
+
+                             {form.hasScreenOptions && (
+
+                                 <div className="rounded-lg border border-violet-200 overflow-hidden">
+
+                                     <div className="flex items-center justify-between px-3 py-2.5 bg-violet-50 border-b border-violet-100">
+
+                                         <div>
+
+                                             <span className="text-sm font-medium text-[#1d1d1f]">Screen Guard / Bundle Options</span>
+
+                                             <p className="text-[10px] text-[#6e6e73] mt-0.5">Each option has a name and full price shown to the customer.</p>
+
+                                         </div>
+
+                                         <button
+
+                                             type="button"
+
+                                             onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "", price: "" }] })}
+
+                                             className="text-[11px] font-semibold text-violet-600 px-2 py-1 rounded-md bg-white border border-violet-200 hover:bg-violet-50 transition-colors flex items-center gap-1"
+
+                                         >
+
+                                             <Plus size={12} /> Add Option
+
+                                         </button>
+
+                                     </div>
+
+                                     <div className="px-3 py-3 space-y-2">
+
+                                         {(form.screenGuardOptions || []).map((opt, i) => (
+
+                                             <div key={i} className="group relative flex items-start gap-2 p-2 rounded-xl bg-black/[0.02] border border-black/[0.04] transition-all hover:border-black/10">
+
+                                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
+
+                                                     <div className="space-y-1">
+
+                                                         <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Name</label>
+
+                                                         <input
+
+                                                             className={`${INPUT} py-1.5 text-xs bg-white`}
+
+                                                             placeholder="e.g. HD Clear"
+
+                                                             value={opt?.label || ""}
+
+                                                             onChange={(e) => {
+
+                                                                 const next = [...(form.screenGuardOptions || [])];
+
+                                                                 next[i] = { ...next[i], label: e.target.value, value: next[i]?.value || e.target.value };
+
+                                                                 setForm({ ...form, screenGuardOptions: next });
+
+                                                             }}
+
+                                                         />
+
+                                                     </div>
+
+                                                     <div className="space-y-1">
+
+                                                         <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Slug / ID</label>
+
+                                                         <input
+
+                                                             className={`${INPUT} py-1.5 text-xs bg-white`}
+
+                                                             placeholder="e.g. hd-clear"
+
+                                                             value={opt?.value || ""}
+
+                                                             onChange={(e) => {
+
+                                                                 const next = [...(form.screenGuardOptions || [])];
+
+                                                                 next[i] = { ...next[i], value: e.target.value };
+
+                                                                 setForm({ ...form, screenGuardOptions: next });
+
+                                                             }}
+
+                                                         />
+
+                                                     </div>
+
+                                                     <div className="space-y-1">
+
+                                                         <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Full Price (₹)</label>
+
+                                                         <input
+
+                                                             className={`${INPUT} py-1.5 text-xs bg-white`}
+
+                                                             type="number"
+
+                                                             min="0"
+
+                                                             placeholder="e.g. 1299"
+
+                                                             value={opt?.price != null && opt?.price !== "" ? opt.price : ""}
+
+                                                             onChange={(e) => {
+
+                                                                 const next = [...(form.screenGuardOptions || [])];
+
+                                                                 next[i] = { ...next[i], price: e.target.value };
+
+                                                                 setForm({ ...form, screenGuardOptions: next });
+
+                                                             }}
+
+                                                         />
+
+                                                         <p className="text-[9px] text-amber-600 ml-1 leading-tight">Replaces base price for this option.</p>
+
+                                                     </div>
+
+                                                 </div>
+
+                                                 <button
+
+                                                     type="button"
+
+                                                     onClick={() => setForm({ ...form, screenGuardOptions: (form.screenGuardOptions || []).filter((_, j) => j !== i) })}
+
+                                                     className="mt-6 p-1.5 rounded-lg text-[#6e6e73] hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+
+                                                     title="Remove option"
+
+                                                 >
+
+                                                     <X size={14} />
+
+                                                 </button>
+
+                                             </div>
+
+                                         ))}
+
+                                         {(form.screenGuardOptions || []).length === 0 && (
+
+                                             <div className="py-4 text-center border-2 border-dashed border-violet-100 rounded-xl">
+
+                                                 <p className="text-xs text-[#6e6e73]">Click &quot;+ Add Option&quot; to add options like &quot;HD Screen&quot;, &quot;Privacy Screen&quot;.</p>
+
+                                             </div>
+
+                                         )}
+
+                                     </div>
+
+                                 </div>
+
+                             )}
+
+
+
+                             <details className="group border border-black/[0.08] rounded-lg overflow-hidden">
                                 <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
                                     <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
                                         <FileText size={16} className="text-[#6e6e73]" />
@@ -1285,16 +1401,34 @@ export default function ProductsPage() {
                                                 }}
                                             />
 
-                                            <ImageUploader
-                                                label="Model images (store gallery when this model has no colors; add color rows below for per-color galleries)"
-                                                multiple
-                                                initialUrls={m.images || []}
-                                                onUploaded={(urls) => {
-                                                    const next = [...(form.models || [])];
-                                                    next[mi] = { ...next[mi], images: urls };
-                                                    setForm({ ...form, models: next });
-                                                }}
-                                            />
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={m.hasColors ?? true}
+                                                        onChange={(e) => {
+                                                            const next = [...(form.models || [])];
+                                                            next[mi] = { ...next[mi], hasColors: e.target.checked };
+                                                            setForm({ ...form, models: next });
+                                                        }}
+                                                        className="rounded border-[#6e6e73]"
+                                                    />
+                                                    <span>Model has color variants</span>
+                                                </label>
+                                            </div>
+
+                                            {!(m.hasColors ?? true) && (
+                                                <>
+                                                    <ImageUploader
+                                                        label="Model images"
+                                                        multiple
+                                                        initialUrls={m.images || []}
+                                                        onUploaded={(urls) => {
+                                                            const next = [...(form.models || [])];
+                                                            next[mi] = { ...next[mi], images: urls };
+                                                            setForm({ ...form, models: next });
+                                                        }}
+                                                    />
 
                                             <div className="rounded-lg bg-violet-50/40 p-3 space-y-2">
                                                 <Model3DUploader
@@ -1320,23 +1454,26 @@ export default function ProductsPage() {
                                                     360° view
                                                 </label>
                                             </div>
+                                        </>
+                                    )}
 
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-xs font-medium text-[#6e6e73]">Colors</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const next = [...(form.models || [])];
-                                                            const colors = Array.isArray(next[mi]?.colors) ? next[mi].colors : [];
-                                                            next[mi] = { ...next[mi], colors: [...colors, { id: null, color: "", colorCode: "", stock: 0, images: [] }] };
-                                                            setForm({ ...form, models: next });
-                                                        }}
-                                                        className="text-xs font-medium text-[#1d1d1f] hover:underline"
-                                                    >
-                                                        + Color
-                                                    </button>
-                                                </div>
+                                            {(m.hasColors ?? true) && (
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-xs font-medium text-[#6e6e73]">Colors</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const next = [...(form.models || [])];
+                                                                const colors = Array.isArray(next[mi]?.colors) ? next[mi].colors : [];
+                                                                next[mi] = { ...next[mi], colors: [...colors, { id: null, color: "", colorCode: "", stock: 0, images: [] }] };
+                                                                setForm({ ...form, models: next });
+                                                            }}
+                                                            className="text-xs font-medium text-[#1d1d1f] hover:underline"
+                                                        >
+                                                            + Color
+                                                        </button>
+                                                    </div>
                                                 {(m.colors || []).map((c, ci) => (
                                                     <div key={ci} className="rounded-lg border border-black/[0.06] p-2 space-y-2 bg-black/[0.02]">
                                                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
@@ -1439,10 +1576,11 @@ export default function ProductsPage() {
                                                                      setForm({ ...form, models: next });
                                                                  }}
                                                              />
-                                                         </div>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
