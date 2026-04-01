@@ -77,25 +77,25 @@ export default function NavigationPage() {
       setCategories(categoriesList);
 
       const raw = Array.isArray(navRes.items) ? navRes.items : [];
-      const mapItem = (item, idx) => {
-        const dropdownItems = (item.dropdown?.items || []).slice(0, MAX_DROPDOWN_ITEMS).map((di) => {
-          const cid = hrefToCategoryId(di.href, categoriesList);
-          const categoryName = di.categoryName ?? (cid ? (categoriesList.find((c) => String(c.id) === cid)?.name ?? "") : "");
-          return { ...di, categoryName };
-        });
-        return {
-          ...item,
-          label: idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : (item.label ?? ""),
-          href: idx < FIXED_LABELS.length ? "/products" : (item.href || "/products"),
-          hasDropdown: true,
-          dropdown: {
-            ...(item.dropdown || {}),
-            title: idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : (item.dropdown?.title ?? item.label ?? ""),
-            layout: "row",
-            items: dropdownItems,
-          },
+        const mapItem = (item, idx) => {
+          const dropdownItems = (item.dropdown?.items || []).slice(0, MAX_DROPDOWN_ITEMS).map((di) => {
+            const cid = hrefToCategoryId(di.href, categoriesList);
+            const categoryName = di.categoryName ?? (cid ? (categoriesList.find((c) => String(c.id) === cid)?.name ?? "") : "");
+            return { ...di, categoryName };
+          });
+          return {
+            ...item,
+            label: item.label ?? (idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : ""),
+            href: item.href || "/products",
+            hasDropdown: true,
+            dropdown: {
+              ...(item.dropdown || {}),
+              title: item.dropdown?.title ?? item.label ?? (idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : ""),
+              layout: "row",
+              items: dropdownItems,
+            },
+          };
         };
-      };
       const mapped =
         raw.length > 0
           ? raw.slice(0, MAX_NAV_LINKS).map(mapItem)
@@ -221,13 +221,13 @@ export default function NavigationPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = items.map((it, idx) => ({
+      const payload = items.map((it) => ({
         ...it,
-        label: idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : (it.label ?? ""),
-        href: idx < FIXED_LABELS.length ? "/products" : (it.href || "/products"),
+        label: it.label || "",
+        href: it.href || "/products",
         dropdown: {
           ...(it.dropdown || {}),
-          title: idx < FIXED_LABELS.length ? FIXED_LABELS[idx] : (it.label || (it.dropdown?.title ?? "")),
+          title: it.label || (it.dropdown?.title ?? ""),
         },
       }));
       await updateNavigation({ items: payload });
@@ -265,10 +265,10 @@ export default function NavigationPage() {
               Navbar links
             </h2>
             <p className="text-sm text-[#6e6e73]">
-              Three fixed items: Products, Accessories, Combos (link /products). You can add one more with your own label. Click chevron to expand/collapse dropdown.
+              You can add up to {MAX_NAV_LINKS} navbar links. Each link can have a title and a custom path. Click chevron to expand/collapse dropdown.
               Dropdown category picks generate filtered URLs like{" "}
               <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">/products?category=your-category-slug</code>
-              . You can also set a custom path on the 4th link using query args:{" "}
+              . You can also set a custom path using query args:{" "}
               <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">brand</code>,{" "}
               <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">sort</code>,{" "}
               <code className="text-xs bg-black/[0.06] px-1.5 py-0.5 rounded">q</code>,{" "}
@@ -311,31 +311,18 @@ export default function NavigationPage() {
                         <ChevronRight size={18} />
                       )}
                     </button>
-                    {i < FIXED_LABELS.length ? (
-                      <span className="flex-1 min-w-[120px] px-4 py-2.5 rounded-xl bg-[#f0f0f0] text-[#1d1d1f] text-sm font-medium">
-                        {FIXED_LABELS[i]}
-                      </span>
-                    ) : (
-                      <input
-                        className={`${INPUT} flex-1 min-w-[120px]`}
-                        value={item.label ?? ""}
-                        onChange={(e) => updateItem(i, "label", e.target.value)}
-                        placeholder="Your label (e.g. Support)"
-                      />
-                    )}
-                    {i < FIXED_LABELS.length ? (
-                      <span className="flex-1 min-w-[120px] px-4 py-2.5 rounded-xl bg-[#f0f0f0] text-[#1d1d1f] text-sm">
-                        /products
-                      </span>
-                    ) : (
-                      <input
-                        className={`${INPUT} flex-1 min-w-[120px]`}
-                        value={item.href ?? ""}
-                        onChange={(e) => updateItem(i, "href", e.target.value)}
-                        placeholder="Link (default /products)"
-                      />
-                    )}
-                    {i >= FIXED_LABELS.length && (
+                    <input
+                      className={`${INPUT} flex-1 min-w-[120px] font-medium`}
+                      value={item.label ?? ""}
+                      onChange={(e) => updateItem(i, "label", e.target.value)}
+                      placeholder="Your label (e.g. Products)"
+                    />
+                    <input
+                      className={`${INPUT} flex-1 min-w-[120px]`}
+                      value={item.href ?? ""}
+                      onChange={(e) => updateItem(i, "href", e.target.value)}
+                      placeholder="Link (default /products)"
+                    />
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
@@ -344,7 +331,6 @@ export default function NavigationPage() {
                       >
                         <Trash2 size={18} />
                       </button>
-                    )}
                   </div>
 
                   {/* Dropdown section — collapsible; label is used as title, no separate field */}
