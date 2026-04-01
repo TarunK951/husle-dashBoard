@@ -155,12 +155,16 @@ function normalizeModelForPayload(m, modelIndex = 0) {
             const colorCode = String(c?.colorCode || "").trim();
             const stock = Number(c?.stock ?? 0);
             const images = Array.isArray(c?.images) ? c.images.filter(Boolean) : [];
+            const models3d = Array.isArray(c?.models3d)
+                ? c.models3d.map((x) => (typeof x === "string" ? x : x?.url)).filter(Boolean)
+                : [];
             return {
                 ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
                 color,
                 ...(colorCode ? { colorCode } : {}),
                 stock: Number.isFinite(stock) ? stock : 0,
                 images,
+                models3d,
             };
         })
         .filter((c) => c.color);
@@ -182,7 +186,8 @@ function hasModelContent(m) {
         (Array.isArray(m?.models3d) && m.models3d.length > 0) ||
         (Array.isArray(m?.colors) && m.colors.some((c) =>
             (c?.color && String(c.color).trim()) ||
-            (Array.isArray(c?.images) && c.images.length > 0),
+            (Array.isArray(c?.images) && c.images.length > 0) ||
+            (Array.isArray(c?.models3d) && c.models3d.length > 0)
         )) ||
         (m?.id != null && m.id !== "")
     );
@@ -457,13 +462,14 @@ const emptyProduct = {
     models3d: [],
     model3dView360: false,
     variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
-    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
+    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
     featured: false,
     limited: false,
     offer: false,
     discount: "",
     isBundle: false,
     bundleProductIds: [],
+    hasScreenOptions: false,
     screenGuardOptions: [],
 };
 
@@ -588,10 +594,11 @@ export default function ProductsPage() {
                                 colorCode: c.colorCode || "",
                                 stock: c.stock ?? 0,
                                 images: Array.isArray(c.images) ? c.images : [],
+                                models3d: Array.isArray(c.models3d) ? c.models3d.map((u) => ({ url: typeof u === "string" ? u : u.url, name: (typeof u === "string" ? u : u.url).split("/").pop() || "", ext: "glb" })) : [],
                             }))
-                        : [{ id: null, color: "", colorCode: "", stock: 0, images: [] }],
+                        : [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }],
                 }))
-                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
+                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
             featured: !!product.featured,
             limited: !!product.limited,
             offer: !!product.offer,
@@ -600,6 +607,7 @@ export default function ProductsPage() {
             bundleProductIds: (Array.isArray(product.bundleProductIds) ? product.bundleProductIds : (product.bundleProductIds ? [product.bundleProductIds] : []))
                 .map((id) => Number(id))
                 .filter((id) => !Number.isNaN(id)),
+            hasScreenOptions: Array.isArray(product.screenGuardOptions) && product.screenGuardOptions.length > 0,
             screenGuardOptions: Array.isArray(product.screenGuardOptions) ? product.screenGuardOptions : [],
         });
         setModal("edit");
@@ -685,13 +693,15 @@ export default function ProductsPage() {
                     ? form.bundleProductIds.map((id) => Number(id)).filter((n) => !Number.isNaN(n))
                     : undefined,
                 screenGuardOptions: Array.isArray(form.screenGuardOptions)
-                    ? form.screenGuardOptions.map((o) => ({
-                        label: String(o?.label || "").trim(),
-                        value: String((o?.value ?? o?.label) || "").trim(),
-                        ...(o?.price !== undefined && o?.price !== "" && !Number.isNaN(Number(o.price))
-                            ? { price: Number(o.price) }
-                            : {}),
-                    }))
+                    ? form.screenGuardOptions
+                        .filter((o) => o?.label && String(o.label).trim())
+                        .map((o) => ({
+                            label: String(o?.label || "").trim(),
+                            value: String((o?.value ?? o?.label) || "").trim(),
+                            ...(o?.price !== undefined && o?.price !== "" && !Number.isNaN(Number(o.price))
+                                ? { price: Number(o.price) }
+                                : {}),
+                        }))
                     : [],
                 ...(deletedVariantIds.length > 0 ? { deletedVariantIds } : {}),
                 ...(deletedModelIds.length > 0 ? { deletedModelIds } : {}),
@@ -870,6 +880,40 @@ export default function ProductsPage() {
                                     <button type="button" onClick={() => setFormError(null)} className="p-1 text-red-500 hover:text-red-700"><X size={14} /></button>
                                 </div>
                             )}
+
+                            {/* Media: Main Images & 3D */}
+                            <div className="space-y-4 pb-4 border-b border-black/[0.08]">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <ImageUploader
+                                        label="Product thumbnail"
+                                        initialUrls={Array.isArray(form.images) ? form.images : (form.images ? [form.images] : [])}
+                                        onUploaded={(url) => setForm({ ...form, images: url })}
+                                    />
+                                    <ImageUploader
+                                        label="Gallery images (max 5)"
+                                        multiple
+                                        initialUrls={(form.gallery || []).map((g) => (typeof g === "string" ? g : g.url))}
+                                        onUploaded={(urls) => setForm({ ...form, gallery: urls.slice(0, 5).map((u) => ({ url: u, type: "image" })) })}
+                                    />
+                                </div>
+                                <div className="rounded-lg bg-violet-50/40 p-3 space-y-2">
+                                    <Model3DUploader
+                                        label="Product 3D Model"
+                                        initialModels={(form.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m)}
+                                        onUploaded={(models) => setForm({ ...form, models3d: models })}
+                                    />
+                                    <label className="flex items-center gap-2 cursor-pointer text-xs">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!form.model3dView360}
+                                            onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
+                                            className="rounded"
+                                        />
+                                        360° view
+                                    </label>
+                                </div>
+                            </div>
+
                             {/* Basics */}
                             <div className="space-y-4">
                                 <div>
@@ -1023,85 +1067,100 @@ export default function ProductsPage() {
                                     </div>
                                 )}
                                 <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.isBundle} onChange={(e) => setForm({ ...form, isBundle: e.target.checked, bundleProductIds: e.target.checked ? form.bundleProductIds : [] })} className="rounded border-[#6e6e73]" /><span>Bundle</span></label>
+                                <label className="flex items-center gap-2 cursor-pointer text-sm text-[#1d1d1f]"><input type="checkbox" checked={!!form.hasScreenOptions} onChange={(e) => setForm({ ...form, hasScreenOptions: e.target.checked, screenGuardOptions: e.target.checked ? (form.screenGuardOptions.length > 0 ? form.screenGuardOptions : [{ label: "", value: "", price: "" }]) : [] })} className="rounded border-[#6e6e73]" /><span>Screen Options</span></label>
                                 {form.isBundle && (
-                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5">
+                                    <div className="w-full mt-1 max-h-28 overflow-y-auto space-y-1 pl-5 border-l-2 border-black/5 ml-2">
                                         {bundleProductList.filter((p) => Number(p.id) !== Number(editTarget?.id)).map((prod) => {
                                             const pid = Number(prod.id);
                                             const ids = (form.bundleProductIds || []).map((x) => Number(x));
                                             const checked = ids.includes(pid);
                                             return (
-                                                <label key={prod.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                                                <label key={prod.id} className="flex items-center gap-2 cursor-pointer text-sm hover:text-black transition-colors">
                                                     <input type="checkbox" checked={checked} onChange={(e) => setForm({ ...form, bundleProductIds: e.target.checked ? [...ids.filter((x) => x !== pid), pid] : ids.filter((x) => x !== pid) })} className="rounded" />
                                                     <span className="truncate">{prod.name}</span>
-                                                    <span className="text-xs text-[#6e6e73]">₹{prod.price}</span>
+                                                    <span className="text-xs text-[#6e6e73] whitespace-nowrap">₹{prod.price}</span>
                                                 </label>
                                             );
                                         })}
                                     </div>
                                 )}
-                                {form.isBundle && (
-                                    <div className="w-full mt-2 pl-5">
-                                        <div className="flex items-center justify-between mb-1">
-                                            <span className="text-xs font-medium text-[#6e6e73]">Screen guard options (single-choice)</span>
+                                {form.hasScreenOptions && (
+                                    <div className="w-full mt-2 pl-5 border-l-2 border-violet-100 ml-2 py-2">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="space-y-0.5">
+                                                <span className="text-xs font-semibold text-[#1d1d1f]">Screen Guard / Type Options</span>
+                                                <p className="text-[10px] text-[#6e6e73]">Add options that customers can pick for this product.</p>
+                                            </div>
                                             <button
                                                 type="button"
                                                 onClick={() => setForm({ ...form, screenGuardOptions: [...(form.screenGuardOptions || []), { label: "", value: "", price: "" }] })}
-                                                className="text-xs font-medium text-[#1d1d1f] hover:underline"
+                                                className="text-[11px] font-semibold text-violet-600 px-2 py-1 rounded-md bg-violet-50 hover:bg-violet-100 transition-colors flex items-center gap-1"
                                             >
-                                                + Option
+                                                <Plus size={12} /> Add Option
                                             </button>
                                         </div>
-                                        {(form.screenGuardOptions || []).length === 0 ? (
-                                            <p className="text-xs text-[#6e6e73]">Optional. Add options like HD / Privacy.</p>
-                                        ) : (
-                                            <div className="space-y-1.5">
-                                                {(form.screenGuardOptions || []).map((opt, i) => (
-                                                    <div key={i} className="flex flex-wrap items-center gap-2">
-                                                        <input
-                                                            className={`${INPUT} py-1.5 text-xs flex-1 min-w-[120px]`}
-                                                            placeholder="Label (HD screen guard)"
-                                                            value={opt?.label || ""}
-                                                            onChange={(e) => {
-                                                                const next = [...(form.screenGuardOptions || [])];
-                                                                next[i] = { ...next[i], label: e.target.value, value: next[i]?.value || e.target.value };
-                                                                setForm({ ...form, screenGuardOptions: next });
-                                                            }}
-                                                        />
-                                                        <input
-                                                            className={`${INPUT} py-1.5 text-xs w-32`}
-                                                            placeholder="Value (hd)"
-                                                            value={opt?.value || ""}
-                                                            onChange={(e) => {
-                                                                const next = [...(form.screenGuardOptions || [])];
-                                                                next[i] = { ...next[i], value: e.target.value };
-                                                                setForm({ ...form, screenGuardOptions: next });
-                                                            }}
-                                                        />
-                                                        <input
-                                                            className={`${INPUT} py-1.5 text-xs w-24`}
-                                                            type="number"
-                                                            min="0"
-                                                            step="1"
-                                                            placeholder="Price ₹"
-                                                            value={opt?.price != null && opt?.price !== "" ? opt.price : ""}
-                                                            onChange={(e) => {
-                                                                const next = [...(form.screenGuardOptions || [])];
-                                                                next[i] = { ...next[i], price: e.target.value };
-                                                                setForm({ ...form, screenGuardOptions: next });
-                                                            }}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setForm({ ...form, screenGuardOptions: (form.screenGuardOptions || []).filter((_, j) => j !== i) })}
-                                                            className="p-1.5 rounded hover:bg-red-50 text-red-500"
-                                                            title="Remove option"
-                                                        >
-                                                            <X size={12} />
-                                                        </button>
+                                        <div className="space-y-2">
+                                            {(form.screenGuardOptions || []).map((opt, i) => (
+                                                <div key={i} className="group relative flex items-start gap-2 p-2 rounded-xl bg-black/[0.02] border border-black/[0.04] transition-all hover:border-black/10">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Label</label>
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
+                                                                placeholder="e.g. HD Clear"
+                                                                value={opt?.label || ""}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.screenGuardOptions || [])];
+                                                                    next[i] = { ...next[i], label: e.target.value, value: next[i]?.value || e.target.value };
+                                                                    setForm({ ...form, screenGuardOptions: next });
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Slug/Value</label>
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
+                                                                placeholder="e.g. hd-clear"
+                                                                value={opt?.value || ""}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.screenGuardOptions || [])];
+                                                                    next[i] = { ...next[i], value: e.target.value };
+                                                                    setForm({ ...form, screenGuardOptions: next });
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] uppercase tracking-wider font-bold text-[#6e6e73] ml-1">Price Add-on (₹)</label>
+                                                            <input
+                                                                className={`${INPUT} py-1.5 text-xs bg-white`}
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={opt?.price != null && opt?.price !== "" ? opt.price : ""}
+                                                                onChange={(e) => {
+                                                                    const next = [...(form.screenGuardOptions || [])];
+                                                                    next[i] = { ...next[i], price: e.target.value };
+                                                                    setForm({ ...form, screenGuardOptions: next });
+                                                                }}
+                                                            />
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setForm({ ...form, screenGuardOptions: (form.screenGuardOptions || []).filter((_, j) => j !== i) })}
+                                                        className="mt-6 p-1.5 rounded-lg text-[#6e6e73] hover:text-red-500 hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
+                                                        title="Remove option"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {(form.screenGuardOptions || []).length === 0 && (
+                                                <div className="py-4 text-center border-2 border-dashed border-black/5 rounded-xl">
+                                                    <p className="text-xs text-[#6e6e73]">Click "+ Add Option" to define screen types or variants.</p>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -1361,13 +1420,26 @@ export default function ProductsPage() {
                                                             multiple
                                                             initialUrls={c.images || []}
                                                             onUploaded={(urls) => {
-                                                                const next = [...(form.models || [])];
-                                                                const colors = [...(next[mi].colors || [])];
-                                                                colors[ci] = { ...colors[ci], images: urls };
-                                                                next[mi] = { ...next[mi], colors };
-                                                                setForm({ ...form, models: next });
-                                                            }}
-                                                        />
+                                                                 const next = [...(form.models || [])];
+                                                                 const colors = [...(next[mi].colors || [])];
+                                                                 colors[ci] = { ...colors[ci], images: urls };
+                                                                 next[mi] = { ...next[mi], colors };
+                                                                 setForm({ ...form, models: next });
+                                                             }}
+                                                         />
+                                                         <div className="rounded-lg bg-violet-50/40 p-3 mt-2">
+                                                             <Model3DUploader
+                                                                 label="Variant 3D (leave empty to use Model 3D)"
+                                                                 initialModels={c.models3d || []}
+                                                                 onUploaded={(models) => {
+                                                                     const next = [...(form.models || [])];
+                                                                     const colors = [...(next[mi].colors || [])];
+                                                                     colors[ci] = { ...colors[ci], models3d: models };
+                                                                     next[mi] = { ...next[mi], colors };
+                                                                     setForm({ ...form, models: next });
+                                                                 }}
+                                                             />
+                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
