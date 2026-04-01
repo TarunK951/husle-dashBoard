@@ -155,12 +155,16 @@ function normalizeModelForPayload(m, modelIndex = 0) {
             const colorCode = String(c?.colorCode || "").trim();
             const stock = Number(c?.stock ?? 0);
             const images = Array.isArray(c?.images) ? c.images.filter(Boolean) : [];
+            const models3d = Array.isArray(c?.models3d)
+                ? c.models3d.map((x) => (typeof x === "string" ? x : x?.url)).filter(Boolean)
+                : [];
             return {
                 ...(Number.isFinite(cidNum) && cidNum > 0 ? { id: cidNum } : {}),
                 color,
                 ...(colorCode ? { colorCode } : {}),
                 stock: Number.isFinite(stock) ? stock : 0,
                 images,
+                models3d,
             };
         })
         .filter((c) => c.color);
@@ -182,7 +186,8 @@ function hasModelContent(m) {
         (Array.isArray(m?.models3d) && m.models3d.length > 0) ||
         (Array.isArray(m?.colors) && m.colors.some((c) =>
             (c?.color && String(c.color).trim()) ||
-            (Array.isArray(c?.images) && c.images.length > 0),
+            (Array.isArray(c?.images) && c.images.length > 0) ||
+            (Array.isArray(c?.models3d) && c.models3d.length > 0)
         )) ||
         (m?.id != null && m.id !== "")
     );
@@ -457,7 +462,7 @@ const emptyProduct = {
     models3d: [],
     model3dView360: false,
     variants: [{ id: null, color: "", images: [], stock: 0, models3d: [] }],
-    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
+    models: [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
     featured: false,
     limited: false,
     offer: false,
@@ -588,10 +593,11 @@ export default function ProductsPage() {
                                 colorCode: c.colorCode || "",
                                 stock: c.stock ?? 0,
                                 images: Array.isArray(c.images) ? c.images : [],
+                                models3d: Array.isArray(c.models3d) ? c.models3d.map((u) => ({ url: typeof u === "string" ? u : u.url, name: (typeof u === "string" ? u : u.url).split("/").pop() || "", ext: "glb" })) : [],
                             }))
-                        : [{ id: null, color: "", colorCode: "", stock: 0, images: [] }],
+                        : [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }],
                 }))
-                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [] }] }],
+                : [{ id: null, name: "", images: [], models3d: [], model3dView360: false, colors: [{ id: null, color: "", colorCode: "", stock: 0, images: [], models3d: [] }] }],
             featured: !!product.featured,
             limited: !!product.limited,
             offer: !!product.offer,
@@ -870,6 +876,40 @@ export default function ProductsPage() {
                                     <button type="button" onClick={() => setFormError(null)} className="p-1 text-red-500 hover:text-red-700"><X size={14} /></button>
                                 </div>
                             )}
+
+                            {/* Media: Main Images & 3D */}
+                            <div className="space-y-4 pb-4 border-b border-black/[0.08]">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <ImageUploader
+                                        label="Product thumbnail"
+                                        initialUrls={Array.isArray(form.images) ? form.images : (form.images ? [form.images] : [])}
+                                        onUploaded={(url) => setForm({ ...form, images: url })}
+                                    />
+                                    <ImageUploader
+                                        label="Gallery images (max 5)"
+                                        multiple
+                                        initialUrls={(form.gallery || []).map((g) => (typeof g === "string" ? g : g.url))}
+                                        onUploaded={(urls) => setForm({ ...form, gallery: urls.slice(0, 5).map((u) => ({ url: u, type: "image" })) })}
+                                    />
+                                </div>
+                                <div className="rounded-lg bg-violet-50/40 p-3 space-y-2">
+                                    <Model3DUploader
+                                        label="Product 3D Model"
+                                        initialModels={(form.models3d || []).map((m) => typeof m === "string" ? { url: m, name: m.split("/").pop() || "", ext: "glb" } : m)}
+                                        onUploaded={(models) => setForm({ ...form, models3d: models })}
+                                    />
+                                    <label className="flex items-center gap-2 cursor-pointer text-xs">
+                                        <input
+                                            type="checkbox"
+                                            checked={!!form.model3dView360}
+                                            onChange={(e) => setForm({ ...form, model3dView360: e.target.checked })}
+                                            className="rounded"
+                                        />
+                                        360° view
+                                    </label>
+                                </div>
+                            </div>
+
                             {/* Basics */}
                             <div className="space-y-4">
                                 <div>
@@ -1361,13 +1401,26 @@ export default function ProductsPage() {
                                                             multiple
                                                             initialUrls={c.images || []}
                                                             onUploaded={(urls) => {
-                                                                const next = [...(form.models || [])];
-                                                                const colors = [...(next[mi].colors || [])];
-                                                                colors[ci] = { ...colors[ci], images: urls };
-                                                                next[mi] = { ...next[mi], colors };
-                                                                setForm({ ...form, models: next });
-                                                            }}
-                                                        />
+                                                                 const next = [...(form.models || [])];
+                                                                 const colors = [...(next[mi].colors || [])];
+                                                                 colors[ci] = { ...colors[ci], images: urls };
+                                                                 next[mi] = { ...next[mi], colors };
+                                                                 setForm({ ...form, models: next });
+                                                             }}
+                                                         />
+                                                         <div className="rounded-lg bg-violet-50/40 p-3 mt-2">
+                                                             <Model3DUploader
+                                                                 label="Variant 3D (leave empty to use Model 3D)"
+                                                                 initialModels={c.models3d || []}
+                                                                 onUploaded={(models) => {
+                                                                     const next = [...(form.models || [])];
+                                                                     const colors = [...(next[mi].colors || [])];
+                                                                     colors[ci] = { ...colors[ci], models3d: models };
+                                                                     next[mi] = { ...next[mi], colors };
+                                                                     setForm({ ...form, models: next });
+                                                                 }}
+                                                             />
+                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
