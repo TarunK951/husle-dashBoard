@@ -1,4 +1,4 @@
-WHimport { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { getDashboardUser, canWriteSection } from "@/lib/permissions";
 import { getCoupons, createCoupon, deleteCoupon, getCategories } from "@/lib/api";
