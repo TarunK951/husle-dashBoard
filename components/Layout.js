@@ -37,6 +37,7 @@ function staffCanSeeHref(href, perms) {
     if (href === "/search-config") return normalizePermLevel(perms.searchConfig) !== "none";
     if (href === "/products" || href === "/inventory") return normalizePermLevel(perms.products) !== "none";
     if (href === "/categories") return normalizePermLevel(perms.categories) !== "none";
+    if (href === "/coupons") return normalizePermLevel(perms.coupons || perms.offers) !== "none";
     if (href === "/orders") return normalizePermLevel(perms.orders) !== "none";
     if (href === "/reviews") return normalizePermLevel(perms.reviews) !== "none";
     if (href === "/settings") return normalizePermLevel(perms.settings) !== "none";
@@ -72,6 +73,7 @@ const SITEWIDE_ITEMS = [
     { href: "/products", icon: Package, label: "Products" },
     { href: "/inventory", icon: Warehouse, label: "Inventory" },
     { href: "/categories", icon: FolderTree, label: "Categories" },
+    { href: "/coupons", icon: Zap, label: "Promo Coupons" },
     { href: "/orders", icon: ShoppingCart, label: "Orders" },
     { href: "/reviews", icon: Star, label: "Product reviews" },
     { href: "/settings", icon: Settings, label: "Settings" },
