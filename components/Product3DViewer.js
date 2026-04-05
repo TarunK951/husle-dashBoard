@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BASIS_TRANSCODER_PATH } from "../lib/basisTranscoderPath.js";
 
 function degToRad(d) {
     const n = typeof d === "number" && !Number.isNaN(d) ? d : 0;
@@ -63,6 +64,7 @@ export default function Product3DViewer({
             } = await import("three");
             const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
             const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+            const { KTX2Loader } = await import("three/addons/loaders/KTX2Loader.js");
 
             const scene = new Scene();
             scene.background = new Color(previewLightBg ? 0xf5f5f7 : 0x202020);
@@ -77,6 +79,9 @@ export default function Product3DViewer({
             const camera = new PerspectiveCamera(fov, width / height, 0.1, 100);
             camera.position.set(camPos[0], camPos[1], camPos[2]);
 
+            const coarsePointer = window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+            const maxDpr = coarsePointer ? 1.4 : 2;
+
             const renderer = new WebGLRenderer({
                 canvas,
                 antialias: true,
@@ -85,7 +90,7 @@ export default function Product3DViewer({
                 powerPreference: "default",
             });
             renderer.setSize(width, height);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
 
             const directionalLight = new DirectionalLight(0xffffff, previewLightBg ? 1.2 : 4);
             directionalLight.position.set(30, -10, 20);
@@ -107,7 +112,7 @@ export default function Product3DViewer({
                 controls.minPolarAngle = Math.PI / 2;
                 controls.maxPolarAngle = Math.PI / 2;
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
+                controls.dampingFactor = coarsePointer ? 0.085 : 0.05;
             }
 
             instanceRef.current.renderer = renderer;
@@ -115,7 +120,11 @@ export default function Product3DViewer({
             instanceRef.current.camera = camera;
             instanceRef.current.modelGroup = modelGroup;
 
+            const ktx2Loader = new KTX2Loader();
+            ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
+            ktx2Loader.detectSupport(renderer);
             const loader = new GLTFLoader();
+            loader.setKTX2Loader(ktx2Loader);
             loader.load(
                 glbUrl,
                 (gltf) => {
