@@ -79,6 +79,9 @@ export default function Product3DViewer({
             const camera = new PerspectiveCamera(fov, width / height, 0.1, 100);
             camera.position.set(camPos[0], camPos[1], camPos[2]);
 
+            const coarsePointer = window.matchMedia("(max-width: 767px), (pointer: coarse)").matches;
+            const maxDpr = coarsePointer ? 1.4 : 2;
+
             const renderer = new WebGLRenderer({
                 canvas,
                 antialias: true,
@@ -87,7 +90,7 @@ export default function Product3DViewer({
                 powerPreference: "default",
             });
             renderer.setSize(width, height);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxDpr));
 
             const directionalLight = new DirectionalLight(0xffffff, previewLightBg ? 1.2 : 4);
             directionalLight.position.set(30, -10, 20);
@@ -109,7 +112,7 @@ export default function Product3DViewer({
                 controls.minPolarAngle = Math.PI / 2;
                 controls.maxPolarAngle = Math.PI / 2;
                 controls.enableDamping = true;
-                controls.dampingFactor = 0.05;
+                controls.dampingFactor = coarsePointer ? 0.085 : 0.05;
             }
 
             instanceRef.current.renderer = renderer;
