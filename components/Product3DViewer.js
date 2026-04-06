@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BASIS_TRANSCODER_PATH } from "../lib/basisTranscoderPath.js";
+import { configureGLTFLoader } from "../lib/configureGLTFLoader.js";
 
 function degToRad(d) {
     const n = typeof d === "number" && !Number.isNaN(d) ? d : 0;
@@ -64,7 +64,6 @@ export default function Product3DViewer({
             } = await import("three");
             const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
             const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
-            const { KTX2Loader } = await import("three/addons/loaders/KTX2Loader.js");
 
             const scene = new Scene();
             scene.background = new Color(previewLightBg ? 0xf5f5f7 : 0x202020);
@@ -120,11 +119,8 @@ export default function Product3DViewer({
             instanceRef.current.camera = camera;
             instanceRef.current.modelGroup = modelGroup;
 
-            const ktx2Loader = new KTX2Loader();
-            ktx2Loader.setTranscoderPath(BASIS_TRANSCODER_PATH);
-            ktx2Loader.detectSupport(renderer);
             const loader = new GLTFLoader();
-            loader.setKTX2Loader(ktx2Loader);
+            await configureGLTFLoader(loader, renderer);
             loader.load(
                 glbUrl,
                 (gltf) => {

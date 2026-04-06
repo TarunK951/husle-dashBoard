@@ -8,7 +8,7 @@ export default function App({ Component, pageProps }) {
   return (
     <main className={inter.className}>
       <Component {...pageProps} />
-      <SpeedInsights />
+      {process.env.VERCEL === "1" ? <SpeedInsights /> : null}
     </main>
   );
 }
