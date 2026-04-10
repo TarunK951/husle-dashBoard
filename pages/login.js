@@ -7,18 +7,27 @@ import Head from "next/head";
 
 export default function LoginPage() {
     const router = useRouter();
-    const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
     const [showPass, setShowPass] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
+    const handlePhoneChange = (e) => {
+        setPhone(e.target.value.replace(/\D/g, "").slice(0, 10));
+    };
+
     const handleLogin = async (e) => {
         e.preventDefault();
         setError("");
+        const digits = phone.replace(/\D/g, "");
+        if (digits.length !== 10) {
+            setError("Enter a valid 10-digit mobile number.");
+            return;
+        }
         setLoading(true);
         try {
-            const data = await login(email, password);
+            const data = await login(digits, password);
             if (data.user?.role !== "admin" && data.user?.role !== "staff") {
                 setError("Access denied. Admin or dashboard staff accounts only.");
                 setLoading(false);
@@ -72,16 +81,21 @@ export default function LoginPage() {
                         <form onSubmit={handleLogin} className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-[#1d1d1f] mb-1.5">
-                                    Email
+                                    Mobile number
                                 </label>
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
-                                    placeholder="admin@example.com"
-                                    className="w-full px-4 py-3 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] transition-all text-sm"
-                                />
+                                <div className="flex items-center rounded-xl border border-black/10 bg-[#f5f5f7] overflow-hidden focus-within:ring-2 focus-within:ring-[#1d1d1f] transition-all">
+                                    <span className="pl-4 pr-2 text-sm font-medium text-[#6e6e73] select-none shrink-0">+91</span>
+                                    <input
+                                        type="tel"
+                                        inputMode="numeric"
+                                        value={phone}
+                                        onChange={handlePhoneChange}
+                                        required
+                                        placeholder="10-digit mobile number"
+                                        maxLength={10}
+                                        className="flex-1 px-2 py-3 bg-transparent text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none text-sm"
+                                    />
+                                </div>
                             </div>
 
                             <div>
