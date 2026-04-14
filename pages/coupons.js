@@ -1,11 +1,43 @@
 import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { getDashboardUser, canWriteSection } from "@/lib/permissions";
-import { getCoupons, createCoupon, deleteCoupon, getCategories } from "@/lib/api";
-import { Plus, Trash2, X, RefreshCw, Zap, Calendar, Info, Tag, CheckCircle2 } from "lucide-react";
+import { getCoupons, createCoupon, updateCoupon, deleteCoupon, getCategories } from "@/lib/api";
+import { Plus, Trash2, X, RefreshCw, Zap, Calendar, Info, Tag, CheckCircle2, Pencil, Pause, Play } from "lucide-react";
 import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
+
+function couponToForm(o) {
+    return {
+        id: o.id,
+        code: o.code || "",
+        description: o.description || "",
+        discountType: o.discountType || "percentage",
+        discountValue: o.discountValue != null ? String(o.discountValue) : "",
+        minOrderValue: o.minOrderValue != null ? String(o.minOrderValue) : "0",
+        usageLimit: o.usageLimit != null && o.usageLimit !== "" ? String(o.usageLimit) : "",
+        startDate: o.startDate ? new Date(o.startDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+        expiryDate: o.expiryDate ? new Date(o.expiryDate).toISOString().split("T")[0] : "",
+        isActive: o.isActive !== false,
+        categoryIds: Array.isArray(o.categories) ? o.categories.map((c) => c.id) : [],
+    };
+}
+
+function emptyForm() {
+    return {
+        id: null,
+        code: "",
+        description: "",
+        discountType: "percentage",
+        discountValue: "",
+        minOrderValue: "0",
+        usageLimit: "",
+        startDate: new Date().toISOString().split("T")[0],
+        expiryDate: "",
+        isActive: true,
+        categoryIds: [],
+    };
+}
 
 export default function CouponsPage() {
     const [coupons, setCoupons] = useState([]);
@@ -14,18 +46,7 @@ export default function CouponsPage() {
     const [error, setError] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({
-        code: "",
-        description: "",
-        discountType: "percentage",
-        discountValue: "",
-        minOrderValue: "0",
-        usageLimit: "",
-        startDate: new Date().toISOString().split('T')[0],
-        expiryDate: "",
-        isActive: true,
-        categoryIds: []
-    });
+    const [form, setForm] = useState(() => emptyForm());
     const [dashUser, setDashUser] = useState(null);
 
     useEffect(() => {
@@ -54,38 +75,48 @@ export default function CouponsPage() {
 
     useEffect(() => { fetchCoupons(); }, []);
 
-    const handleCreate = async (e) => {
+    const buildPayload = () => ({
+        code: form.code.trim(),
+        description: form.description,
+        discountType: form.discountType,
+        discountValue: parseFloat(form.discountValue),
+        minOrderValue: parseFloat(form.minOrderValue || 0),
+        usageLimit: form.usageLimit ? parseInt(form.usageLimit, 10) : null,
+        startDate: form.startDate || null,
+        expiryDate: form.expiryDate || null,
+        isActive: form.isActive,
+        categoryIds: form.categoryIds.map((id) => parseInt(id, 10)),
+    });
+
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (!canWriteCoupons) return;
         if (!form.code?.trim()) return;
         setSaving(true);
         try {
-            const payload = {
-                ...form,
-                discountValue: parseFloat(form.discountValue),
-                minOrderValue: parseFloat(form.minOrderValue || 0),
-                usageLimit: form.usageLimit ? parseInt(form.usageLimit) : null,
-                categoryIds: form.categoryIds.map(id => parseInt(id))
-            };
-            await createCoupon(payload);
+            const payload = buildPayload();
+            if (form.id) {
+                await updateCoupon(form.id, payload);
+            } else {
+                await createCoupon(payload);
+            }
             setShowModal(false);
-            setForm({
-                code: "",
-                description: "",
-                discountType: "percentage",
-                discountValue: "",
-                minOrderValue: "0",
-                usageLimit: "",
-                startDate: new Date().toISOString().split('T')[0],
-                expiryDate: "",
-                isActive: true,
-                categoryIds: []
-            });
+            setForm(emptyForm());
             fetchCoupons();
-        } catch (e) {
-            setError(e?.message || "Failed to create coupon");
+        } catch (err) {
+            setError(err?.message || (form.id ? "Failed to update coupon" : "Failed to create coupon"));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleToggleActive = async (o) => {
+        if (!canWriteCoupons) return;
+        try {
+            await updateCoupon(o.id, { isActive: !o.isActive });
+            fetchCoupons();
+        } catch (err) {
+            alert(err?.message || "Failed to update coupon");
         }
     };
 
@@ -113,7 +144,15 @@ export default function CouponsPage() {
                         <div className="flex items-center gap-2">
                             <button type="button" onClick={fetchCoupons} disabled={loading} className="p-2 rounded-lg text-[#6e6e73] hover:bg-black/5" title="Refresh"><RefreshCw size={18} className={loading ? "animate-spin" : ""} /></button>
                             {canWriteCoupons && (
-                                <button type="button" onClick={() => { setShowModal(true); setError(null); }} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1d1d1f] text-white text-sm font-semibold hover:bg-black transition-all">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setForm(emptyForm());
+                                        setError(null);
+                                        setShowModal(true);
+                                    }}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1d1d1f] text-white text-sm font-semibold hover:bg-black transition-all"
+                                >
                                     <Plus size={18} /> New coupon
                                 </button>
                             )}
@@ -137,20 +176,48 @@ export default function CouponsPage() {
                         ) : coupons.length === 0 ? (
                             <div className="col-span-full py-20 text-center bg-white rounded-3xl border border-dashed border-black/10">
                                 <Zap size={40} className="mx-auto text-black/10 mb-4" />
-                                <p className="text-[#6e6e73] font-medium mb-3">No active coupons yet.</p>
-                                <button onClick={() => setShowModal(true)} className="text-sm font-bold text-[#1d1d1f] hover:underline">Create your first coupon</button>
+                                <p className="text-[#6e6e73] font-medium mb-3">No coupons yet.</p>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setForm(emptyForm());
+                                        setShowModal(true);
+                                    }}
+                                    className="text-sm font-bold text-[#1d1d1f] hover:underline"
+                                >
+                                    Create your first coupon
+                                </button>
                             </div>
                         ) : (
                             coupons.map((o) => (
                                 <div key={o.id} className="group relative bg-white rounded-3xl border border-black/[0.06] p-5 shadow-sm hover:shadow-md transition-all flex flex-col">
-                                    <div className="flex justify-between items-start mb-4">
+                                    <div className="flex justify-between items-start mb-4 gap-2">
                                         <div className="bg-[#1d1d1f] text-white px-3 py-1 rounded-xl font-black text-sm tracking-wider uppercase">
                                             {o.code}
                                         </div>
                                         {canWriteCoupons && (
-                                            <button onClick={() => handleDelete(o.id)} className="p-2 rounded-full hover:bg-red-50 text-red-400 opacity-0 group-hover:opacity-100 transition-all">
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    type="button"
+                                                    title="Edit coupon"
+                                                    onClick={() => {
+                                                        setForm(couponToForm(o));
+                                                        setError(null);
+                                                        setShowModal(true);
+                                                    }}
+                                                    className="p-2 rounded-full hover:bg-black/5 text-[#1d1d1f]"
+                                                >
+                                                    <Pencil size={16} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title="Delete coupon"
+                                                    onClick={() => handleDelete(o.id)}
+                                                    className="p-2 rounded-full hover:bg-red-50 text-red-400"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                     
@@ -189,11 +256,32 @@ export default function CouponsPage() {
                                         </div>
                                     </div>
 
-                                    <div className="mt-5 pt-4 border-t border-black/[0.04]">
-                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${o.isActive ? "text-green-600" : "text-red-500"}`}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${o.isActive ? "bg-green-500" : "bg-red-500"}`} />
-                                            {o.isActive ? "ACTIVE & PUBLIC" : "INACTIVE"}
+                                    <div className="mt-5 pt-4 border-t border-black/[0.04] flex flex-col gap-3">
+                                        <div className={`flex items-center gap-1.5 text-[11px] font-bold ${o.isActive ? "text-green-600" : "text-amber-700"}`}>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${o.isActive ? "bg-green-500" : "bg-amber-500"}`} />
+                                            {o.isActive ? "Running — customers can apply this code" : "Paused — not valid at checkout"}
                                         </div>
+                                        {canWriteCoupons && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleActive(o)}
+                                                className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide border transition-colors ${
+                                                    o.isActive
+                                                        ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                                                        : "border-green-200 bg-green-50 text-green-800 hover:bg-green-100"
+                                                }`}
+                                            >
+                                                {o.isActive ? (
+                                                    <>
+                                                        <Pause size={14} strokeWidth={2.5} /> Pause promo
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Play size={14} strokeWidth={2.5} /> Resume promo
+                                                    </>
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))
@@ -203,21 +291,43 @@ export default function CouponsPage() {
 
                 {/* Add Coupon Modal */}
                 {showModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setShowModal(false)}>
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+                        onClick={() => {
+                            setShowModal(false);
+                            setForm(emptyForm());
+                        }}
+                    >
                         <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in shadow-black/20" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-between px-8 py-6 border-b border-black/[0.05] sticky top-0 bg-white z-10">
                                 <div>
-                                    <h2 className="text-xl font-bold text-[#1d1d1f]">Create New Coupon</h2>
-                                    <p className="text-xs text-[#86868b] font-medium mt-0.5">Configure discounts and validation rules</p>
+                                    <h2 className="text-xl font-bold text-[#1d1d1f]">{form.id ? "Edit coupon" : "Create new coupon"}</h2>
+                                    <p className="text-xs text-[#86868b] font-medium mt-0.5">
+                                        {form.id
+                                            ? "Update rules, dates, or turn the promo on from here."
+                                            : "Configure discounts and validation rules"}
+                                    </p>
                                 </div>
-                                <button type="button" onClick={() => setShowModal(false)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/5 text-[#86868b]"><X size={20} /></button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowModal(false);
+                                        setForm(emptyForm());
+                                    }}
+                                    className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/5 text-[#86868b]"
+                                >
+                                    <X size={20} />
+                                </button>
                             </div>
                             
-                            <form onSubmit={handleCreate} className="p-8 space-y-6">
+                            <form onSubmit={handleSubmit} className="p-8 space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-1">
                                         <label className="block text-[13px] font-bold text-[#1d1d1f] ml-1">Coupon code</label>
                                         <input className={INPUT} required value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} placeholder="e.g. SUMMER20" />
+                                        {form.id != null && (
+                                            <p className="text-[10px] text-[#86868b] mt-1">Changing the code updates what customers type at checkout.</p>
+                                        )}
                                     </div>
                                     <div className="space-y-1">
                                         <label className="block text-[13px] font-bold text-[#1d1d1f] ml-1">Description</label>
@@ -282,10 +392,38 @@ export default function CouponsPage() {
                                     <p className="text-[10px] text-[#86868b] font-medium ml-1 italic">If none selected, coupon applies to all items.</p>
                                 </div>
 
+                                <div className="flex items-center gap-3 rounded-2xl border border-black/10 bg-[#f5f5f7] px-4 py-3">
+                                    <input
+                                        type="checkbox"
+                                        id="coupon-active"
+                                        checked={form.isActive}
+                                        onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                                        className="h-4 w-4 rounded border-black/20"
+                                    />
+                                    <label htmlFor="coupon-active" className="text-sm font-semibold text-[#1d1d1f] cursor-pointer">
+                                        Promo is running (valid at checkout when dates and limits allow)
+                                    </label>
+                                </div>
+
+                                {form.id != null && (
+                                    <p className="text-[11px] text-[#86868b]">
+                                        Tip: you can also use <strong>Pause promo</strong> / <strong>Resume promo</strong> on the card without opening this form.
+                                    </p>
+                                )}
+
                                 <div className="flex gap-4 pt-4 border-t border-black/[0.05]">
-                                    <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-4 rounded-2xl border border-black/10 text-sm font-bold hover:bg-black/5 transition-colors">Discard changes</button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowModal(false);
+                                            setForm(emptyForm());
+                                        }}
+                                        className="flex-1 py-4 rounded-2xl border border-black/10 text-sm font-bold hover:bg-black/5 transition-colors"
+                                    >
+                                        Discard changes
+                                    </button>
                                     <button type="submit" disabled={saving} className="flex-1 py-4 rounded-2xl bg-[#1d1d1f] text-white text-sm font-bold hover:bg-black transition-all disabled:opacity-50">
-                                        {saving ? "Creating coupon..." : "Create Coupon"}
+                                        {saving ? (form.id ? "Saving…" : "Creating coupon…") : form.id ? "Save changes" : "Create coupon"}
                                     </button>
                                 </div>
                             </form>
