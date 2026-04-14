@@ -492,12 +492,20 @@ export default function ProductsPage() {
     const [bundleProductList, setBundleProductList] = useState([]);
     const [formError, setFormError] = useState(null);
     const [brandDropOpen, setBrandDropOpen] = useState(false);
+    /** Models & colors accordion — must be controlled; a static `open` on <details> re-applies every render and prevents collapsing. */
+    const [modelsColorsOpen, setModelsColorsOpen] = useState(false);
     const brandInputRef = useRef(null);
     const [dashUser, setDashUser] = useState(null);
     useEffect(() => {
         setDashUser(getDashboardUser());
     }, []);
     const canWriteProducts = canWriteSection(dashUser, "products");
+
+    const closeProductModal = () => {
+        setModal(null);
+        setEditTarget(null);
+        setModelsColorsOpen(false);
+    };
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -543,6 +551,7 @@ export default function ProductsPage() {
         if (!canWriteProducts) return;
         setForm(emptyProduct);
         setFormError(null);
+        setModelsColorsOpen(false);
         setModal("create");
         getProducts({ limit: 200 }).then((data) => {
             const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
@@ -613,6 +622,7 @@ export default function ProductsPage() {
             hasScreenOptions: Array.isArray(product.screenGuardOptions) && product.screenGuardOptions.length > 0,
             screenGuardOptions: Array.isArray(product.screenGuardOptions) ? product.screenGuardOptions : [],
         });
+        setModelsColorsOpen(false);
         setModal("edit");
         getProducts({ limit: 200 }).then((data) => {
             const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
@@ -716,9 +726,8 @@ export default function ProductsPage() {
                 const id = editTarget.id != null ? String(editTarget.id) : editTarget.id;
                 await updateProduct(id, payload);
             }
-            setModal(null);
-            setEditTarget(null);
-            fetchProducts();
+            closeProductModal();
+            await fetchProducts();
         } catch (e) {
             setFormError(e?.message || "Failed to save product.");
         } finally {
@@ -875,7 +884,7 @@ export default function ProductsPage() {
 
                 {/* Create / Edit Modal */}
                 {modal && (
-                    <Modal title={modal === "create" ? "Add product" : "Edit product"} onClose={() => { setModal(null); setEditTarget(null); }} icon={<Package size={18} />}>
+                    <Modal title={modal === "create" ? "Add product" : "Edit product"} onClose={closeProductModal} icon={<Package size={18} />}>
                         <form onSubmit={handleSave} className="space-y-4">
                             {formError && (
                                 <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center justify-between">
@@ -1314,13 +1323,20 @@ export default function ProductsPage() {
                                 </div>
                             </details>
 
-                            <details className="group border border-black/[0.08] rounded-lg overflow-hidden" open>
-                                <summary className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden">
+                            <details
+                                className="group border border-black/[0.08] rounded-lg overflow-hidden"
+                                open={modelsColorsOpen}
+                                onToggle={(e) => setModelsColorsOpen(e.currentTarget.open)}
+                            >
+                                <summary
+                                    className="cursor-pointer list-none flex items-center justify-between gap-2 px-3 py-2.5 bg-black/[0.02] hover:bg-black/[0.04] transition-colors [&::-webkit-details-marker]:hidden"
+                                    title={modelsColorsOpen ? "Collapse Models & colors" : "Expand Models & colors"}
+                                >
                                     <span className="flex items-center gap-2 text-sm font-medium text-[#1d1d1f]">
                                         <Layers size={16} className="text-[#6e6e73]" />
                                         Models & colors (new)
                                     </span>
-                                    <span className="flex items-center gap-1 text-[#6e6e73]">
+                                    <span className="flex items-center gap-1 text-[#6e6e73] shrink-0" aria-hidden>
                                         <ChevronRight size={18} className="group-open:hidden" />
                                         <ChevronDown size={18} className="hidden group-open:block" />
                                     </span>
@@ -1587,7 +1603,7 @@ export default function ProductsPage() {
                             </details>
 
                             <div className="flex gap-2 pt-2 border-t border-black/[0.06]">
-                                <button type="button" onClick={() => { setModal(null); setEditTarget(null); }} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
+                                <button type="button" onClick={closeProductModal} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
                                 <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black disabled:opacity-60">{saving ? "Saving…" : modal === "create" ? "Create" : "Save"}</button>
                             </div>
                         </form>
