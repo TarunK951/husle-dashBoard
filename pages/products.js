@@ -220,18 +220,22 @@ function ModelBadge({ ext }) {
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
+/** Scrollable body + footer stays visible (flex layout, not window scroll). */
 function Modal({ title, onClose, children, icon }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto fade-in" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] sticky top-0 bg-white z-10 rounded-t-xl">
+            <div
+                className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden fade-in"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between px-4 py-3 border-b border-black/[0.06] shrink-0 bg-white z-20 rounded-t-xl">
                     <h2 className="flex items-center gap-2 text-sm font-semibold text-[#1d1d1f]">
                         {icon && <span className="text-[#6e6e73]">{icon}</span>}
                         {title}
                     </h2>
                     <button type="button" onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 text-[#6e6e73] hover:text-[#1d1d1f]"><X size={16} /></button>
                 </div>
-                <div className="p-4">{children}</div>
+                <div className="flex flex-col min-h-0 flex-1 overflow-hidden">{children}</div>
             </div>
         </div>
     );
@@ -475,6 +479,69 @@ const emptyProduct = {
     screenGuardOptions: [],
 };
 
+function cloneEmptyProduct() {
+    return JSON.parse(JSON.stringify(emptyProduct));
+}
+
+// ─── Product form drafts (localStorage) ───────────────────────────────────────
+const PRODUCT_DRAFT_PREFIX = "husle_dash_product_draft_";
+
+function getProductDraftKey(mode, productId) {
+    if (mode === "create") return `${PRODUCT_DRAFT_PREFIX}create`;
+    if (mode === "edit" && productId != null && productId !== "") return `${PRODUCT_DRAFT_PREFIX}edit_${productId}`;
+    return null;
+}
+
+function sanitizeProductDraft(d) {
+    if (!d || typeof d !== "object") return null;
+    const variants = Array.isArray(d.variants) && d.variants.length ? d.variants : emptyProduct.variants;
+    const models = Array.isArray(d.models) && d.models.length ? d.models : emptyProduct.models;
+    return {
+        ...emptyProduct,
+        ...d,
+        images: Array.isArray(d.images) ? d.images : [],
+        gallery: Array.isArray(d.gallery) ? d.gallery : [],
+        models3d: Array.isArray(d.models3d) ? d.models3d : [],
+        variants: JSON.parse(JSON.stringify(variants)),
+        models: JSON.parse(JSON.stringify(models)),
+        bundleProductIds: Array.isArray(d.bundleProductIds) ? d.bundleProductIds : [],
+        screenGuardOptions: Array.isArray(d.screenGuardOptions) ? d.screenGuardOptions : [],
+    };
+}
+
+function loadProductDraft(mode, productId) {
+    try {
+        const key = getProductDraftKey(mode, productId);
+        if (!key) return null;
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        const formData = parsed.form != null ? parsed.form : parsed;
+        return sanitizeProductDraft(formData);
+    } catch {
+        return null;
+    }
+}
+
+function saveProductDraft(mode, productId, formData) {
+    try {
+        const key = getProductDraftKey(mode, productId);
+        if (!key) return;
+        localStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), form: formData }));
+    } catch (e) {
+        console.warn("Could not save product draft to localStorage", e);
+    }
+}
+
+function clearProductDraft(mode, productId) {
+    try {
+        const key = getProductDraftKey(mode, productId);
+        if (key) localStorage.removeItem(key);
+    } catch {
+        /* ignore */
+    }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function ProductsPage() {
     const [products, setProducts] = useState([]);
@@ -495,6 +562,7 @@ export default function ProductsPage() {
     /** Models & colors accordion — must be controlled; a static `open` on <details> re-applies every render and prevents collapsing. */
     const [modelsColorsOpen, setModelsColorsOpen] = useState(false);
     const brandInputRef = useRef(null);
+    const draftSaveTimerRef = useRef(null);
     const [dashUser, setDashUser] = useState(null);
     useEffect(() => {
         setDashUser(getDashboardUser());
@@ -547,11 +615,25 @@ export default function ProductsPage() {
 
     useEffect(() => { fetchProducts(); }, [page, search, categoryId]);
 
+    /** Auto-save product form to localStorage while Add/Edit modal is open (cleared on successful save). */
+    useEffect(() => {
+        if (!modal || (modal !== "create" && modal !== "edit") || !canWriteProducts) return undefined;
+        const pid = modal === "edit" ? editTarget?.id : null;
+        if (modal === "edit" && (pid == null || pid === "")) return undefined;
+        clearTimeout(draftSaveTimerRef.current);
+        draftSaveTimerRef.current = setTimeout(() => {
+            saveProductDraft(modal, pid, form);
+        }, 450);
+        return () => clearTimeout(draftSaveTimerRef.current);
+    }, [form, modal, editTarget?.id, canWriteProducts]);
+
     const openCreate = () => {
         if (!canWriteProducts) return;
-        setForm(emptyProduct);
+        setEditTarget(null);
         setFormError(null);
         setModelsColorsOpen(false);
+        const restored = loadProductDraft("create");
+        setForm(restored ?? cloneEmptyProduct());
         setModal("create");
         getProducts({ limit: 200 }).then((data) => {
             const list = Array.isArray(data) ? data : (data?.products || data?.data || data?.items || []);
@@ -568,7 +650,7 @@ export default function ProductsPage() {
         const modelsSorted = [...modelsRaw].sort(
             (a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0)
         );
-        setForm({
+        const serverForm = {
             name: product.name || "",
             description: product.description || "",
             price: product.price ?? "",
@@ -621,7 +703,9 @@ export default function ProductsPage() {
                 .filter((id) => !Number.isNaN(id)),
             hasScreenOptions: Array.isArray(product.screenGuardOptions) && product.screenGuardOptions.length > 0,
             screenGuardOptions: Array.isArray(product.screenGuardOptions) ? product.screenGuardOptions : [],
-        });
+        };
+        const draftRestored = loadProductDraft("edit", product.id);
+        setForm(draftRestored ?? serverForm);
         setModelsColorsOpen(false);
         setModal("edit");
         getProducts({ limit: 200 }).then((data) => {
@@ -722,9 +806,11 @@ export default function ProductsPage() {
             };
             if (modal === "create") {
                 await createProduct(payload);
+                clearProductDraft("create");
             } else {
                 const id = editTarget.id != null ? String(editTarget.id) : editTarget.id;
                 await updateProduct(id, payload);
+                clearProductDraft("edit", editTarget?.id);
             }
             closeProductModal();
             await fetchProducts();
@@ -885,7 +971,8 @@ export default function ProductsPage() {
                 {/* Create / Edit Modal */}
                 {modal && (
                     <Modal title={modal === "create" ? "Add product" : "Edit product"} onClose={closeProductModal} icon={<Package size={18} />}>
-                        <form onSubmit={handleSave} className="space-y-4">
+                        <form onSubmit={handleSave} className="flex flex-col min-h-0 flex-1 overflow-hidden">
+                            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                             {formError && (
                                 <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center justify-between">
                                     <span>{formError}</span>
@@ -1601,10 +1688,11 @@ export default function ProductsPage() {
                                     ))}
                                 </div>
                             </details>
+                            </div>
 
-                            <div className="flex gap-2 pt-2 border-t border-black/[0.06]">
-                                <button type="button" onClick={closeProductModal} className="flex-1 py-2 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5">Cancel</button>
-                                <button type="submit" disabled={saving} className="flex-1 py-2 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black disabled:opacity-60">{saving ? "Saving…" : modal === "create" ? "Create" : "Save"}</button>
+                            <div className="shrink-0 flex gap-2 px-4 py-3 border-t border-black/[0.08] bg-[#fafafa] rounded-b-xl">
+                                <button type="button" onClick={closeProductModal} className="flex-1 py-2.5 rounded-lg border border-black/10 text-sm font-medium hover:bg-black/5 bg-white">Cancel</button>
+                                <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-lg bg-[#1d1d1f] text-white text-sm font-medium hover:bg-black disabled:opacity-60">{saving ? "Saving…" : modal === "create" ? "Create" : "Save"}</button>
                             </div>
                         </form>
                     </Modal>
