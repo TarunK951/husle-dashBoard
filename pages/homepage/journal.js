@@ -6,7 +6,45 @@ import Head from "next/head";
 
 const INPUT = "w-full px-4 py-2.5 rounded-xl border border-black/10 bg-[#f5f5f7] text-[#1d1d1f] placeholder-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f] text-sm transition-all";
 
-const emptyPost = { title: "", excerpt: "", date: "", author: "", category: "", image: "", slug: "" };
+const emptyPost = {
+    title: "",
+    excerpt: "",
+    date: "",
+    author: "",
+    category: "",
+    image: "",
+    slug: "",
+    content: "",
+};
+
+/** Map stored content (string or block array) to plain text for the editor textarea. */
+function contentToEditString(raw) {
+    if (raw == null || raw === "") return "";
+    if (typeof raw === "string") {
+        const t = raw.trim();
+        if (t.startsWith("[")) {
+            try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    return parsed
+                        .filter((b) => b && typeof b === "object")
+                        .map((b) => (b.text != null ? String(b.text) : ""))
+                        .join("\n\n");
+                }
+            } catch {
+                return raw;
+            }
+        }
+        return raw;
+    }
+    if (Array.isArray(raw)) {
+        return raw
+            .filter((b) => b && typeof b === "object")
+            .map((b) => (b.text != null ? String(b.text) : ""))
+            .join("\n\n");
+    }
+    return "";
+}
 
 export default function JournalPage() {
     const [loading, setLoading] = useState(true);
@@ -32,7 +70,20 @@ export default function JournalPage() {
     useEffect(() => { fetchData(); }, []);
 
     const openCreate = () => { setForm(emptyPost); setEditId(null); setModal("edit"); };
-    const openEdit = (p) => { setForm({ title: p.title ?? "", excerpt: p.excerpt ?? "", date: p.date ?? "", author: p.author ?? "", category: p.category ?? "", image: p.image ?? "", slug: p.slug ?? "" }); setEditId(p.id); setModal("edit"); };
+    const openEdit = (p) => {
+        setForm({
+            title: p.title ?? "",
+            excerpt: p.excerpt ?? "",
+            date: p.date ?? "",
+            author: p.author ?? "",
+            category: p.category ?? "",
+            image: p.image ?? "",
+            slug: p.slug ?? "",
+            content: contentToEditString(p.content),
+        });
+        setEditId(p.id);
+        setModal("edit");
+    };
     const closeModal = () => { setModal(null); setEditId(null); setForm(emptyPost); };
 
     const handleSave = async (e) => {
@@ -151,6 +202,16 @@ export default function JournalPage() {
                                     </div>
                                 </div>
                                 <div><label className="block text-sm font-medium text-[#1d1d1f] mb-1">Slug (URL-friendly)</label><input className={INPUT} value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="art-of-titanium" /></div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#1d1d1f] mb-1">Article body</label>
+                                    <textarea
+                                        className={INPUT}
+                                        rows={12}
+                                        value={form.content}
+                                        onChange={(e) => setForm({ ...form, content: e.target.value })}
+                                        placeholder="Write the article. Blank lines start a new paragraph; spaces and line breaks are kept on the site."
+                                    />
+                                </div>
                                 <div className="flex gap-3 pt-2">
                                     <button type="button" onClick={closeModal} className="flex-1 py-2.5 rounded-xl border border-black/10 text-sm font-medium hover:bg-[#f5f5f7]">Cancel</button>
                                     <button type="submit" disabled={saving} className="flex-1 bg-[#1d1d1f] text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-60 hover:bg-black">{saving ? "Saving..." : "Save"}</button>
