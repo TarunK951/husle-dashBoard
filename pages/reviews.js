@@ -49,6 +49,7 @@ export default function AdminReviewsPage() {
     const [expandedId, setExpandedId] = useState(null);
     const [lightboxImg, setLightboxImg] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
     useEffect(() => {
         setDashUser(getDashboardUser());
@@ -69,6 +70,7 @@ export default function AdminReviewsPage() {
             });
             const list = data.reviews || [];
             setReviews(list.map((r) => ({ ...r, showOnStorefront: r.showOnStorefront !== false })));
+            setSelectedIds(new Set());
             setTotal(data.total ?? list.length);
             setTotalPages(data.totalPages ?? 1);
         } catch (e) {
@@ -89,25 +91,46 @@ export default function AdminReviewsPage() {
         setAppliedSearch(search.trim());
     };
 
-    const allVisibleOnPage = useMemo(
-        () => reviews.length > 0 && reviews.every((r) => r.showOnStorefront),
-        [reviews]
+    const allSelectedOnPage = useMemo(
+        () => reviews.length > 0 && reviews.every((r) => selectedIds.has(r.id)),
+        [reviews, selectedIds]
     );
 
-    const selectAllOnPage = () => {
-        if (!canWriteReviews) return;
-        setReviews((prev) => prev.map((r) => ({ ...r, showOnStorefront: true })));
+    const toggleSelectAll = () => {
+        if (allSelectedOnPage) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(reviews.map((r) => r.id)));
+        }
     };
 
-    const clearAllOnPage = () => {
-        if (!canWriteReviews) return;
-        setReviews((prev) => prev.map((r) => ({ ...r, showOnStorefront: false })));
+    const toggleSelect = (id) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
     };
 
-    const toggleOne = (id) => {
+    const toggleVisibility = (id) => {
         if (!canWriteReviews) return;
         setReviews((prev) =>
             prev.map((r) => (r.id === id ? { ...r, showOnStorefront: !r.showOnStorefront } : r))
+        );
+    };
+
+    const approveSelected = () => {
+        if (!canWriteReviews || selectedIds.size === 0) return;
+        setReviews((prev) =>
+            prev.map((r) => (selectedIds.has(r.id) ? { ...r, showOnStorefront: true } : r))
+        );
+    };
+
+    const hideSelected = () => {
+        if (!canWriteReviews || selectedIds.size === 0) return;
+        setReviews((prev) =>
+            prev.map((r) => (selectedIds.has(r.id) ? { ...r, showOnStorefront: false } : r))
         );
     };
 
@@ -222,19 +245,19 @@ export default function AdminReviewsPage() {
                     <div className="flex flex-wrap gap-2 items-center">
                         <button
                             type="button"
-                            onClick={selectAllOnPage}
-                            disabled={!canWriteReviews || loading || reviews.length === 0}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] disabled:opacity-40"
+                            onClick={approveSelected}
+                            disabled={!canWriteReviews || loading || selectedIds.size === 0}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 transition-colors"
                         >
-                            <Eye size={16} /> Approve all
+                            <Eye size={16} /> Approve selected{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
                         </button>
                         <button
                             type="button"
-                            onClick={clearAllOnPage}
-                            disabled={!canWriteReviews || loading || reviews.length === 0}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-black/10 bg-white text-sm font-medium text-[#1d1d1f] disabled:opacity-40"
+                            onClick={hideSelected}
+                            disabled={!canWriteReviews || loading || selectedIds.size === 0}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-40 transition-colors"
                         >
-                            <EyeOff size={16} /> Hide all
+                            <EyeOff size={16} /> Hide selected{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
                         </button>
                         <button
                             type="button"
@@ -280,15 +303,12 @@ export default function AdminReviewsPage() {
                                     <thead>
                                         <tr className="border-b border-black/5 bg-[#f5f5f7]/60">
                                             <th className="text-left px-4 py-3 w-12">
-                                                <span className="sr-only">Show on site</span>
+                                                <span className="sr-only">Select all</span>
                                                 <input
                                                     type="checkbox"
                                                     className="rounded border-black/20"
-                                                    checked={allVisibleOnPage}
-                                                    disabled={!canWriteReviews}
-                                                    onChange={(e) =>
-                                                        e.target.checked ? selectAllOnPage() : clearAllOnPage()
-                                                    }
+                                                    checked={allSelectedOnPage}
+                                                    onChange={toggleSelectAll}
                                                     title="Select or unselect all on this page"
                                                 />
                                             </th>
@@ -309,6 +329,9 @@ export default function AdminReviewsPage() {
                                             </th>
                                             <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
                                                 Date
+                                            </th>
+                                            <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
+                                                Status
                                             </th>
                                             <th className="text-center px-3 py-3 text-xs font-semibold text-[#6e6e73] w-20">
                                                 Actions
@@ -338,10 +361,9 @@ export default function AdminReviewsPage() {
                                                             <input
                                                                 type="checkbox"
                                                                 className="rounded border-black/20 accent-emerald-600"
-                                                                checked={!!r.showOnStorefront}
-                                                                disabled={!canWriteReviews}
-                                                                onChange={() => toggleOne(r.id)}
-                                                                aria-label={`Show review ${r.id} on site`}
+                                                                checked={selectedIds.has(r.id)}
+                                                                onChange={() => toggleSelect(r.id)}
+                                                                aria-label={`Select review ${r.id}`}
                                                             />
                                                         </td>
                                                         <td className="px-3 py-3 align-top whitespace-nowrap">
@@ -395,6 +417,17 @@ export default function AdminReviewsPage() {
                                                                   })
                                                                 : "—"}
                                                         </td>
+                                                        <td className="px-3 py-3 align-top whitespace-nowrap">
+                                                            {r.showOnStorefront ? (
+                                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                                                    <Eye size={11} /> Visible
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">
+                                                                    <EyeOff size={11} /> Hidden
+                                                                </span>
+                                                            )}
+                                                        </td>
                                                         <td className="px-3 py-3 align-top text-center">
                                                             <span className="inline-flex items-center gap-1">
                                                                 {isExpanded ? (
@@ -418,7 +451,7 @@ export default function AdminReviewsPage() {
                                                             key={`${r.id}-detail`}
                                                             className="border-b border-black/5 bg-[#f9f9fb]"
                                                         >
-                                                            <td colSpan={8} className="px-6 py-5">
+                                                            <td colSpan={9} className="px-6 py-5">
                                                                 <div className="flex flex-col gap-4 max-w-3xl">
                                                                     {/* Full comment */}
                                                                     <div>
@@ -504,7 +537,7 @@ export default function AdminReviewsPage() {
                                                                     <div className="flex items-center gap-2 pt-2 border-t border-black/5">
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => toggleOne(r.id)}
+                                                                            onClick={() => toggleVisibility(r.id)}
                                                                             disabled={!canWriteReviews}
                                                                             className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 ${
                                                                                 r.showOnStorefront
