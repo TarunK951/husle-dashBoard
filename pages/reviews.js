@@ -16,6 +16,8 @@ import {
     ChevronUp,
     X,
     User,
+    Phone,
+    Mail,
 } from "lucide-react";
 
 function StarRating({ rating }) {
@@ -43,6 +45,7 @@ export default function AdminReviewsPage() {
     const [total, setTotal] = useState(0);
     const [productIdFilter, setProductIdFilter] = useState("");
     const [search, setSearch] = useState("");
+    const [ratingFilter, setRatingFilter] = useState("all"); // "all" | "1" | "2" | "3" | "4" | "5"
     const [appliedProductId, setAppliedProductId] = useState("");
     const [appliedSearch, setAppliedSearch] = useState("");
     const [dashUser, setDashUser] = useState(null);
@@ -67,6 +70,7 @@ export default function AdminReviewsPage() {
                 limit: 15,
                 productId: appliedProductId || undefined,
                 search: appliedSearch || undefined,
+                rating: ratingFilter && ratingFilter !== "all" ? ratingFilter : undefined,
             });
             const list = data.reviews || [];
             setReviews(list.map((r) => ({ ...r, showOnStorefront: r.showOnStorefront !== false })));
@@ -79,7 +83,7 @@ export default function AdminReviewsPage() {
         } finally {
             setLoading(false);
         }
-    }, [page, appliedProductId, appliedSearch]);
+    }, [page, appliedProductId, appliedSearch, ratingFilter]);
 
     useEffect(() => {
         fetchReviews();
@@ -90,6 +94,21 @@ export default function AdminReviewsPage() {
         setAppliedProductId(productIdFilter.trim());
         setAppliedSearch(search.trim());
     };
+
+    const handleRatingChange = (next) => {
+        if (next === ratingFilter) return;
+        setPage(1);
+        setRatingFilter(next);
+    };
+
+    const RATING_CHIPS = [
+        { value: "all", label: "All ratings" },
+        { value: "5", label: "5" },
+        { value: "4", label: "4" },
+        { value: "3", label: "3" },
+        { value: "2", label: "2" },
+        { value: "1", label: "1" },
+    ];
 
     const allSelectedOnPage = useMemo(
         () => reviews.length > 0 && reviews.every((r) => selectedIds.has(r.id)),
@@ -241,6 +260,40 @@ export default function AdminReviewsPage() {
                         </button>
                     </div>
 
+                    {/* Rating filter chips */}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-[#6e6e73] mr-1">Rating</span>
+                        {RATING_CHIPS.map((chip) => {
+                            const active = ratingFilter === chip.value;
+                            const isStar = chip.value !== "all";
+                            return (
+                                <button
+                                    key={chip.value}
+                                    type="button"
+                                    onClick={() => handleRatingChange(chip.value)}
+                                    aria-pressed={active}
+                                    className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                                        active
+                                            ? "bg-[#1d1d1f] text-white border-[#1d1d1f]"
+                                            : "bg-white text-[#1d1d1f] border-black/10 hover:border-black/30"
+                                    }`}
+                                >
+                                    {isStar && (
+                                        <Star
+                                            size={12}
+                                            className={
+                                                active
+                                                    ? "fill-amber-300 text-amber-300"
+                                                    : "fill-amber-400 text-amber-400"
+                                            }
+                                        />
+                                    )}
+                                    {isStar ? `${chip.label} stars` : chip.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
                     {/* Bulk actions */}
                     <div className="flex flex-wrap gap-2 items-center">
                         <button
@@ -322,6 +375,12 @@ export default function AdminReviewsPage() {
                                                 Customer
                                             </th>
                                             <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
+                                                Phone
+                                            </th>
+                                            <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
+                                                Email
+                                            </th>
+                                            <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
                                                 Comment
                                             </th>
                                             <th className="text-left px-3 py-3 text-xs font-semibold text-[#6e6e73]">
@@ -389,6 +448,46 @@ export default function AdminReviewsPage() {
                                                                 {r.user?.username || "Anonymous User"}
                                                             </span>
                                                         </td>
+                                                        <td
+                                                            className="px-3 py-3 align-top whitespace-nowrap"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {r.phone ? (
+                                                                <a
+                                                                    href={`tel:${r.phone}`}
+                                                                    className="inline-flex items-center gap-1 text-xs font-medium text-[#1d1d1f] hover:text-blue-600 hover:underline"
+                                                                    title="Call reviewer"
+                                                                >
+                                                                    <Phone
+                                                                        size={12}
+                                                                        className="text-[#86868b]"
+                                                                    />
+                                                                    {r.phone}
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-xs text-[#c7c7cc]">—</span>
+                                                            )}
+                                                        </td>
+                                                        <td
+                                                            className="px-3 py-3 align-top whitespace-nowrap"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            {r.email ? (
+                                                                <a
+                                                                    href={`mailto:${r.email}`}
+                                                                    className="inline-flex items-center gap-1 text-xs font-medium text-[#1d1d1f] hover:text-blue-600 hover:underline max-w-[180px] truncate"
+                                                                    title={`Email ${r.email}`}
+                                                                >
+                                                                    <Mail
+                                                                        size={12}
+                                                                        className="text-[#86868b] shrink-0"
+                                                                    />
+                                                                    <span className="truncate">{r.email}</span>
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-xs text-[#c7c7cc]">—</span>
+                                                            )}
+                                                        </td>
                                                         <td className="px-3 py-3 align-top text-[#6e6e73] max-w-xs">
                                                             <p className="line-clamp-2">
                                                                 {r.comment || "—"}
@@ -451,7 +550,7 @@ export default function AdminReviewsPage() {
                                                             key={`${r.id}-detail`}
                                                             className="border-b border-black/5 bg-[#f9f9fb]"
                                                         >
-                                                            <td colSpan={9} className="px-6 py-5">
+                                                            <td colSpan={11} className="px-6 py-5">
                                                                 <div className="flex flex-col gap-4 max-w-3xl">
                                                                     {/* Full comment */}
                                                                     <div>
@@ -479,6 +578,38 @@ export default function AdminReviewsPage() {
                                                                                     <span className="text-[11px] text-[#86868b] font-mono ml-1.5">
                                                                                         ID: {r.user.id}
                                                                                     </span>
+                                                                                )}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-[#86868b] text-xs">Phone</span>
+                                                                            <p className="mt-0.5">
+                                                                                {r.phone ? (
+                                                                                    <a
+                                                                                        href={`tel:${r.phone}`}
+                                                                                        className="inline-flex items-center gap-1 font-medium text-[#1d1d1f] hover:text-blue-600 hover:underline"
+                                                                                    >
+                                                                                        <Phone size={13} className="text-[#86868b]" />
+                                                                                        {r.phone}
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <span className="text-[#c7c7cc]">Not provided</span>
+                                                                                )}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className="text-[#86868b] text-xs">Email</span>
+                                                                            <p className="mt-0.5">
+                                                                                {r.email ? (
+                                                                                    <a
+                                                                                        href={`mailto:${r.email}`}
+                                                                                        className="inline-flex items-center gap-1 font-medium text-[#1d1d1f] hover:text-blue-600 hover:underline break-all"
+                                                                                    >
+                                                                                        <Mail size={13} className="text-[#86868b] shrink-0" />
+                                                                                        {r.email}
+                                                                                    </a>
+                                                                                ) : (
+                                                                                    <span className="text-[#c7c7cc]">Not provided</span>
                                                                                 )}
                                                                             </p>
                                                                         </div>
